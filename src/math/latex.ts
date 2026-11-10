@@ -13,7 +13,7 @@ const MATH_LANGS = new Set(["latex", "tex", "math", "katex"])
 export const isMathLang = (lang: string) => MATH_LANGS.has(lang.trim().toLowerCase())
 
 /** One em of the reference raster: the SVG is written at this size, and layout scales it to the measure. */
-const REF_EM = 40
+export const MATH_REF_EM = 40
 /** MathJax's viewBox is in 1/1000 em, whatever the ex-based width/height attributes say. */
 const UNITS_PER_EM = 1000
 
@@ -110,8 +110,8 @@ function withPixels(svg: string, color: string): { svg: string; w: number; h: nu
     .split(/[\s,]+/)
     .map(Number)
   if (box?.length !== 4 || box.some((n) => !Number.isFinite(n))) return null
-  const w = Math.max(1, Math.round(((box[2] ?? 0) / UNITS_PER_EM) * REF_EM))
-  const h = Math.max(1, Math.round(((box[3] ?? 0) / UNITS_PER_EM) * REF_EM))
+  const w = Math.max(1, Math.round(((box[2] ?? 0) / UNITS_PER_EM) * MATH_REF_EM))
+  const h = Math.max(1, Math.round(((box[3] ?? 0) / UNITS_PER_EM) * MATH_REF_EM))
   const stamped = open
     ? svg
         .replace(open, (tag) => tag.replace(/\swidth="[^"]*"/i, "").replace(/\sheight="[^"]*"/i, ""))

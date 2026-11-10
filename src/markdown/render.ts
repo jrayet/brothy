@@ -6,7 +6,7 @@
 import type { Token, Tokens } from "marked"
 import { A, type Span, safe, safeLine } from "../lib/spans"
 import { truncate as clip, graphemes, pushSpan, spanWidth, width, wrap } from "../lib/text"
-import { isMathLang, type MathRequest, mathRequest } from "../math/latex"
+import { isMathLang, MATH_REF_EM, type MathRequest, mathRequest } from "../math/latex"
 import { isMarkdown } from "../notes/files"
 import { isImagePath, isRemoteImage, parseImageSize, QUERY_OR_ANCHOR } from "../notes/images"
 import type { Theme } from "../theme/theme"
@@ -544,6 +544,27 @@ export function picBox(
   return { cols, rows }
 }
 
+/** How many ems a maths block's reference raster is shown at: MathJax's size is a formula's own em, not a cell's. */
+export const MATHS_EM_CELLS = 1.65
+/** Past this much upscaling a formula would be wider than the measure anyway: the box caps it and the raster keeps the aspect. */
+export const MATHS_ZOOM_MAX = 1.6
+
+/**
+ * A maths block's box in cells: picBox at the size `size` would be drawn with one em a cell and a half, zoomed by how
+ * far the measure leaves it short (a formula's em says nothing about how wide the note is), then laid out as a picture.
+ */
+export function mathBox(
+  size: { w: number; h: number },
+  measure: number,
+  cell: { w: number; h: number },
+): { cols: number; rows: number } {
+  const scale = (MATHS_EM_CELLS * cell.h) / MATH_REF_EM
+  const natural = { w: Math.max(1, size.w * scale), h: Math.max(1, size.h * scale) }
+  const base = picBox(natural, null, measure, cell)
+  const zoom = Math.min(MATHS_ZOOM_MAX, Math.max(1, measure / base.cols))
+  return zoom > 1 ? picBox({ w: natural.w * zoom, h: natural.h * zoom }, null, measure, cell) : base
+}
+
 interface SoleImage {
   src: string
   /** the alt as written, "" when empty */
@@ -801,6 +822,7 @@ function mathBlock(ctx: Ctx, source: string, f: BlockFrame): boolean {
     return true
   }
   if (p.mode === "text") {
+    pic.size = size
     ctx.lines.push({
       spans: [
         ...f.rest,
@@ -814,7 +836,9 @@ function mathBlock(ctx: Ctx, source: string, f: BlockFrame): boolean {
   }
   const indent = spanWidth(f.rest)
   const room = f.max - indent
-  const box = picBox(size, null, room, p.cell)
+  // the sheet fits pic.size into its body, so a typeset block must carry it or the viewer bails on it
+  pic.size = size
+  const box = mathBox(size, room, p.cell)
   Object.assign(pic, box, { left: indent + Math.floor((room - box.cols) / 2) })
   for (let i = 0; i < box.rows; i++)
     ctx.lines.push({ spans: i === 0 ? f.pre() : f.rest.map((s) => ({ ...s })), pic: id })

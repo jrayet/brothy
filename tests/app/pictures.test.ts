@@ -15,6 +15,7 @@ import {
   reservedRows,
   watchCell,
 } from "../../src/app/pictures"
+import { ensureSvg, svgRaster } from "../../src/app/svg"
 import { scanTree } from "../../src/notes/files"
 import { STDIN } from "../../src/notes/workspace"
 import { makePng } from "../helpers/png"
@@ -36,7 +37,7 @@ test("cellOf rounds herdr's fractional cells", () => {
 const PNG = makePng(1, 1, [200, 100, 50, 255])
 const CLEAR_PNG = makePng(1, 1, [0, 0, 0, 0])
 const SVG = new TextEncoder().encode(
-  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 10"><rect width="10" height="10" fill="red"/><rect x="10" width="10" height="10" fill="blue"/></svg>',
+  '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="10" viewBox="0 0 20 10"><rect width="10" height="10" fill="red"/><rect x="10" width="10" height="10" fill="blue"/></svg>',
 )
 
 /** Poll for a condition (a decode lands a macrotask or more later), bounded. */
@@ -266,6 +267,58 @@ test("real decoder: an SVG whose aspect differs from the box still ends up the b
   cache.want("v", "/v.svg", 10, 10, null, () => {})
   await until(() => cache.get("v") !== undefined)
   expect([cache.get("v")!.width, cache.get("v")!.height]).toEqual([10, 10])
+})
+
+/** The bounding box of the pixels with any alpha left, null for none. */
+const inkOf = (img: NativeImage) => {
+  const d = img.raw().data
+  const { width: w, height: h } = img
+  let x0 = w
+  let y0 = h
+  let x1 = -1
+  let y1 = -1
+  for (let y = 0; y < h; y++)
+    for (let x = 0; x < w; x++) {
+      if (d[(y * w + x) * 4 + 3]! <= 8) continue
+      x0 = Math.min(x0, x)
+      x1 = Math.max(x1, x)
+      y0 = Math.min(y0, y)
+      y1 = Math.max(y1, y)
+    }
+  return x1 < 0 ? null : { x0, y0, w: x1 - x0 + 1, h: y1 - y0 + 1 }
+}
+
+test("real decoder: an SVG wider than the box keeps its proportions, fitted on the axis that binds", async () => {
+  const cache = new PictureCache(1e9, undefined, () => SVG) // the drawing is 20 × 10: two squares side by side
+  cache.want("v", "/v.svg", 40, 100, null, () => {})
+  await until(() => cache.get("v") !== undefined)
+  const img = cache.get("v")!
+  expect([img.width, img.height]).toEqual([40, 100])
+  // the width binds: 40 × 20 of drawing, 40 clear rows above and below
+  const ink = inkOf(img)!
+  expect(ink).toEqual({ x0: 0, y0: 40, w: 40, h: 20 })
+  expect(ink.w / ink.h).toBeCloseTo(2, 1)
+  img.dispose()
+})
+
+test("svgRaster: exactly w × h with the drawing centred, and one argument is still its own width", async () => {
+  await ensureSvg()
+  const same = svgRaster(SVG, 30, 15) // the box's aspect is the drawing's: it fills it
+  expect([same.width, same.height]).toEqual([30, 15])
+  expect(inkOf(same)).toEqual({ x0: 0, y0: 0, w: 30, h: 15 })
+  same.dispose()
+  // the image is exactly w×h; its drawing is fitted on one axis and centred inside, so the assert is a re-render
+  // through the cache rather than a probe of a second raster of the same bytes
+  const cache = new PictureCache(1e9, undefined, () => SVG)
+  cache.want("v", "/v.svg", 20, 40, null, () => {})
+  await until(() => cache.get("v") !== undefined)
+  const boxed = cache.get("v")!
+  expect([boxed.width, boxed.height]).toEqual([20, 40])
+  expect(inkOf(boxed)!.h).toBe(10) // 20 px wide of a 2:1 drawing, 15 rows of clear margin above and below
+  boxed.dispose()
+  const wide = svgRaster(SVG, 10) // the single-argument form: the height the aspect gives
+  expect([wide.width, wide.height]).toEqual([10, 5])
+  wide.dispose()
 })
 
 test("real decoder: an SVG's external <image href> (file:, a path, http:) draws nothing", async () => {

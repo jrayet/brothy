@@ -261,7 +261,9 @@ export function pictureSheet(
   const cols = innerWidth(popupWidth(W, width))
   const rows = proofHeight(H)
   const file = files.file(pic.src)
-  const title = pictureTitle(pic, file ? pictureShown(file, s.openPath, s.root) : "", cols - PICTURE_TITLE_PAD)
+  // a typeset block's file is a cache path: it names nothing the reader knows, so its title stops at the size
+  const shown = file && !pic.src.startsWith("math:") ? pictureShown(file, s.openPath, s.root) : ""
+  const title = pictureTitle(pic, shown, cols - PICTURE_TITLE_PAD)
   const base = { pic, width, cols, rows, title, waiting: false }
   if (pic.problem || !pic.size || !file) return { ...base, draw: null }
   // pixels but no cell size yet (a resize in flight): nothing to decode for, the body waits empty

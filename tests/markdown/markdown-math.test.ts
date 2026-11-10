@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test"
 import { rmSync } from "node:fs"
 import type { NativeImage } from "@opentui/core"
 import { PictureCache, picKey, pictureFiles } from "../../src/app/pictures"
-import { render } from "../../src/markdown/render"
+import { mathBox, render } from "../../src/markdown/render"
 import { ensureMath, mathInfo } from "../../src/math/latex"
 import { scanTree } from "../../src/notes/files"
 import { brothy as t } from "../helpers/theme"
@@ -51,11 +51,25 @@ describe("latex fences", () => {
     const pic = second.pics![0]!
     expect(pic.src).toBe(req.key)
     expect(pic.cols * cell.w).toBeLessThanOrEqual(80 * cell.w)
-    // rows follow the aspect of what was typeset, so the image is never squashed
-    const size = mathInfo(req.key)!
-    expect(Math.abs(pic.rows * cell.h - (pic.cols * cell.w * size.h) / size.w)).toBeLessThanOrEqual(cell.h)
+    // the viewer fits pic.size into its body, so the block must carry the typeset size or it draws nothing
+    expect(pic.size).toEqual(mathInfo(req.key)!)
+    // the box is maths-specific (its own em, zoomed to the measure), not the picture one: 291×94 at measure 80
+    expect([pic.cols, pic.rows]).toEqual([39, 6])
     const reserved = second.lines.filter((l) => l.pic === pic.id)
     expect(reserved.length).toBe(pic.rows)
+  })
+
+  test("mathBox: the reference em at a cell's height, zoomed to the measure, capped", () => {
+    // 291×94: 291 · 1.65 · 20/40 = 240 px = 24 columns, so no zoom; 94 · 0.825 = 78 px over 2.4 columns per row
+    expect(mathBox({ w: 291, h: 94 }, 80, cell)).toEqual({ cols: 39, rows: 6 })
+    // the taller derivation: 429×226
+    expect(mathBox({ w: 429, h: 226 }, 80, cell)).toEqual({ cols: 57, rows: 15 })
+    // a small formula zooms: 40×40 → 2 columns of base box, 80/2 well past MATHS_ZOOM_MAX, so the cap decides
+    expect(mathBox({ w: 40, h: 40 }, 80, cell)).toEqual({ cols: 6, rows: 3 })
+    // a long thin one fills the measure: 600×10 → 25 columns of base box, zoomed to 80 (a cap of 40 would stop at 66)
+    expect(mathBox({ w: 600, h: 10 }, 80, cell)).toEqual({ cols: 80, rows: 1 })
+    // a narrow measure leaves no zoom at all: the base box (5 columns) is already wider, so nothing to zoom
+    expect(mathBox({ w: 40, h: 40 }, 5, cell)).toEqual({ cols: 5, rows: 3 })
   })
 
   test("a second pass over the same source asks for nothing", async () => {

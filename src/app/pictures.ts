@@ -107,6 +107,7 @@ export function watchCell({ ui, set, renderer, timers, lastCell }: CellDeps) {
 /**
  * Where a note's pictures live: the layout's size lookup (`info`, null for a target that isn't a picture) and the file
  * each target resolved to. A piped document has no folder of its own: it stands in the workspace folder.
+ * `file` also answers a `math:` key from the typeset cache, so a render before its `info` still finds the drawing.
  */
 export function pictureFiles(openPath: string | null, root: string, tree: FileNode) {
   const note = openPath && openPath !== STDIN ? openPath : join(root, STDIN)
@@ -128,7 +129,7 @@ export function pictureFiles(openPath: string | null, root: string, tree: FileNo
     const size = imageInfo(file)
     return "problem" in size ? size : { w: size.w, h: size.h }
   }
-  return { info, file: (src: string) => files.get(src) ?? null }
+  return { info, file: (src: string) => files.get(src) ?? (src.startsWith("math:") ? mathFile(src) : null) }
 }
 /** What `pictureFiles` returns. */
 export type PictureFiles = ReturnType<typeof pictureFiles>
@@ -195,20 +196,22 @@ export type Decoder = (bytes: Uint8Array, format: ImageFormat, w: number, h: num
 /** Decode, fit to exactly `w × h` pixels, flattened onto `bg` when one is given. Every intermediate is disposed. */
 function decodePicture(bg: Bg | null): Decoder {
   return (bytes, format, w, h) => {
-    const src = format === "svg" ? svgRaster(bytes, w) : NativeImage.decode(bytes)
+    // an SVG rasterises straight to the box (centred, margins transparent) and needs no resize after that
+    const src = format === "svg" ? svgRaster(bytes, w, h) : NativeImage.decode(bytes)
     let fit: NativeImage | undefined
     let base: NativeImage | undefined
     try {
-      fit = src.resize({ width: w, height: h })
+      fit = src.width === w && src.height === h ? undefined : src.resize({ width: w, height: h })
       if (!bg) {
-        const out = fit
+        const out = fit ?? src
         fit = undefined
         return out
       }
       base = NativeImage.fromRgba(solid(w, h, bg), w, h)
-      return base.composite(fit)
+      return base.composite(fit ?? src)
     } finally {
-      src.dispose()
+      // the one handed back (`out`) is disposed by the cache, never here
+      if (src.width !== w || src.height !== h) src.dispose()
       fit?.dispose()
       base?.dispose()
     }

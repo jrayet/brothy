@@ -1,6 +1,17 @@
 import { expect, test } from "bun:test"
+import { rmSync } from "node:fs"
+import { join } from "node:path"
+import { pictureSheet } from "../../src/app/derive/steps"
 import { firstPicIn, picAt } from "../../src/app/picture-sheet"
-import type { Rendered } from "../../src/markdown/render"
+import { pictureFiles } from "../../src/app/pictures"
+import type { UI } from "../../src/app/store"
+import { type Rendered, render } from "../../src/markdown/render"
+import { ensureMath, mathInfo } from "../../src/math/latex"
+import { scanTree } from "../../src/notes/files"
+import { brothy as t } from "../helpers/theme"
+import { makeTmp } from "../helpers/tmp"
+
+const cell = { w: 10, h: 20 }
 
 /** 20 lines; picture 0 on lines 3-5 (two rows and its caption), picture 1 on line 12 (a placeholder). */
 const picOf = (n: number) => {
@@ -40,4 +51,26 @@ test("firstPicIn, zen: the window is the page or the reading line's rows, not `t
   expect(firstPicIn(view, { first: 0, lo: 6, hi: 20 }, 20)?.id).toBe(1)
   // the page ends before picture 1
   expect(firstPicIn(view, { first: 6, lo: 6, hi: 12 }, 20)).toBeUndefined()
+})
+
+// The B1 regression: a typeset block reached the sheet without `pic.size`, the sheet bailed on it and the viewer read
+// "unreadable" for a formula that had drawn fine in the note.
+test("pictureSheet: a typeset maths picture draws, and its title names the size, not the cache path", async () => {
+  const d = makeTmp("brothy-sheet-")
+  const files = pictureFiles(null, d, scanTree(d))
+  const opts = { picture: { mode: "pixels" as const, cell, info: files.info } }
+  const src = "latex fence\n\n```latex\n\\frac{-b \\pm \\sqrt{b^2-4ac}}{2a}\n```\n"
+  const first = render(src, 80, t, opts)
+  await ensureMath(first.math ?? [])
+  const doc = render(src, 80, t, opts)
+  const pic = doc.pics![0]!
+  expect(pic.size).toEqual(mathInfo(pic.src)!)
+
+  const ui = { picture: { id: pic.id }, openPath: join(d, "n.md"), root: d, cell } as unknown as UI
+  const sheet = pictureSheet(ui, 120, 40, doc, files, "pixels", cell, t.name)
+  expect(sheet).not.toBeNull()
+  expect(sheet!.draw).not.toBeNull()
+  expect(sheet!.title).toStartWith("maths · ")
+  expect(sheet!.title).not.toContain(d) // the cache folder says nothing to the reader
+  rmSync(d, { recursive: true })
 })
