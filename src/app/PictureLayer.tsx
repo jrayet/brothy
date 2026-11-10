@@ -69,15 +69,20 @@ export function pictureLayer(c: AppCtx, d: Derived, rows: number, win?: Window) 
       askPicture(c, d, key, file, p, cell)
       return []
     }
-    const place = { position: "absolute", left: p.left + dx, top: at.y } as const
+    // BROTHY_NO_CROP: an experiment. A cut <image> is a second, shifted placement of the same picture in the terminal;
+    // drawing the whole one instead says whether that placement (not the image) is what a real terminal shows wrongly.
+    const whole = !!process.env.BROTHY_NO_CROP
+    const box = whole ? { y: p.line - first, rows: p.rows } : { y: at.y, rows: at.rows }
+    const crop = whole ? { left: 0, top: 0, width: p.cols * cell.w, height: p.rows * cell.h } : at.crop
+    const place = { position: "absolute", left: p.left + dx, top: box.y } as const
     return img ? (
       <image
         key={`pic-${p.id}-${key}`}
         source={img}
         fit="fill"
-        crop={at.crop}
+        crop={crop}
         onError={() => pixelsFailed(c)}
-        style={{ ...place, width: p.cols, height: at.rows }}
+        style={{ ...place, width: p.cols, height: box.rows }}
       />
     ) : (
       <box key={`pic-${p.id}-failed`} style={{ ...place, width: L.CW - p.left, height: 1 }}>
