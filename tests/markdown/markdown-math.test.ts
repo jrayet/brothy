@@ -69,6 +69,9 @@ describe("latex fences", () => {
     expect(mathBox({ w: 600, h: 10 }, 80, cell)).toEqual({ cols: 58, rows: 1 })
     // a narrow measure leaves no zoom at all: the base box is already wider than it
     expect(mathBox({ w: 40, h: 40 }, 5, cell)).toEqual({ cols: 4, rows: 2 })
+    // a pane of a columns page passes zoomMax 1: the formula keeps its em instead of growing into the pane
+    expect(mathBox({ w: 291, h: 94 }, 80, cell, 1)).toEqual({ cols: 18, rows: 3 })
+    expect(mathBox({ w: 429, h: 226 }, 80, cell, 1)).toEqual({ cols: 26, rows: 7 })
   })
 
   test("a second pass over the same source asks for nothing", async () => {

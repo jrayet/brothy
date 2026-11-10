@@ -155,7 +155,9 @@ function zenLines(c: AppCtx, d: Derived) {
   const cols = Math.max(1, d.L.cols)
   // columns flow: panes side by side, each drawing the next CH rows; the gloss sheet sits in the last one
   const pane = (col: number) => {
-    const first = d.win.first + col * CH
+    // the panes break before a picture rather than cut it: `panes` is where each one starts, then where the band ends
+    const first = d.panes[col] ?? d.win.first + col * CH
+    const stop = d.panes[col + 1] ?? first + CH
     const last = col === cols - 1
     return (
       <box
@@ -166,6 +168,7 @@ function zenLines(c: AppCtx, d: Derived) {
           const r = i - sheetAt
           if (last && r >= 0) return <Row key={"gloss" + r} spans={[{ text: "  " }, ...bottom[r]!]} />
           const n = first + i
+          if (n >= stop) return <Row key={`pad-${n}`} spans={[{ text: " " }]} />
           const head = { text: d.tw && n === d.top ? "▸" : " ", fg: gutter }
           if (n >= d.win.lo && n < d.win.hi && reservedBlank(d.view, n))
             return (
@@ -175,7 +178,7 @@ function zenLines(c: AppCtx, d: Derived) {
             )
           return <Row key={n} spans={markedLine(head, zenLine(d, n), marks.get(n), CW)} />
         })}
-        {pictureLayer(c, d, last ? sheetAt : CH, { first, lo: d.win.lo, hi: d.win.hi, dx: 2 })}
+        {pictureLayer(c, d, last ? sheetAt : CH, { first, lo: d.win.lo, hi: Math.min(d.win.hi, stop), dx: 2 })}
       </box>
     )
   }

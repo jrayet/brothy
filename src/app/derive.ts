@@ -111,9 +111,10 @@ function documentMemo(stdin: string | undefined) {
     }),
     // one object per layout of the pictures, so `doc` holds
     picture: cached(
-      (mode: PictureOpts["mode"], w: number, h: number, files: PictureFiles): PictureOpts => ({
+      (mode: PictureOpts["mode"], w: number, h: number, files: PictureFiles, mathZoom: number): PictureOpts => ({
         mode,
         cell: { w, h },
+        mathZoom,
         info: files.info,
       }),
     ),

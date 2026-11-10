@@ -31,10 +31,10 @@ function makeZenMotion(c: AppCtx) {
 
   /** Pages flow: show page `i` (clamped) from its start. In columns a page is a band of rows of the whole text. */
   const goPage = (i: number) => {
-    const { ranges, pg, L } = derive()
+    const { ranges, pages, L } = derive()
     if (L.zen && ui.current.zenCfg.flow === "columns") {
-      const rows = L.CH * Math.max(1, L.cols)
-      return setTop(clamp(i, 0, (pg?.count ?? 1) - 1) * rows)
+      if (!pages?.length) return setTop(0)
+      return setTop(pages[clamp(i, 0, pages.length - 1)]!)
     }
     setTop(ranges[clamp(i, 0, ranges.length - 1)]![0])
   }

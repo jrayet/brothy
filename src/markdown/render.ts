@@ -47,6 +47,8 @@ export interface Pic {
 export interface PictureOpts {
   mode: "pixels" | "text"
   cell: { w: number; h: number }
+  /** how far maths may grow past its own em, inside the measure (default MATHS_ZOOM_MAX) */
+  mathZoom?: number
   /** size or problem for a target as written; null = not an image file, render inline as today */
   info: (src: string) => { w: number; h: number } | { problem: string } | null
 }
@@ -558,11 +560,12 @@ export function mathBox(
   size: { w: number; h: number },
   measure: number,
   cell: { w: number; h: number },
+  zoomMax = MATHS_ZOOM_MAX,
 ): { cols: number; rows: number } {
   const scale = (MATHS_EM_CELLS * cell.h) / MATH_REF_EM
   const natural = { w: Math.max(1, size.w * scale), h: Math.max(1, size.h * scale) }
   const base = picBox(natural, null, measure, cell)
-  const zoom = Math.min(MATHS_ZOOM_MAX, Math.max(1, measure / base.cols))
+  const zoom = Math.min(zoomMax, Math.max(1, measure / base.cols))
   return zoom > 1 ? picBox({ w: natural.w * zoom, h: natural.h * zoom }, null, measure, cell) : base
 }
 
@@ -839,7 +842,7 @@ function mathBlock(ctx: Ctx, source: string, f: BlockFrame): boolean {
   const room = f.max - indent
   // the sheet fits pic.size into its body, so a typeset block must carry it or the viewer bails on it
   pic.size = size
-  const box = mathBox(size, room, p.cell)
+  const box = mathBox(size, room, p.cell, p.mathZoom)
   Object.assign(pic, box, { left: indent + Math.floor((room - box.cols) / 2) })
   for (let i = 0; i < box.rows; i++)
     ctx.lines.push({ spans: i === 0 ? f.pre() : f.rest.map((s) => ({ ...s })), pic: id })

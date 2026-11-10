@@ -10,7 +10,7 @@ import { GLOSS_ROWS, type GlossTarget, type GlossView, overflows, parseGlossStyl
 import { noteName } from "../../graph/ego"
 import { graphFoot, graphHead, graphMode, isGraphStop } from "../../graph/sheet"
 import { clamp, plural, wrap } from "../../lib/text"
-import type { Rendered } from "../../markdown/render"
+import { MATHS_ZOOM_MAX, type Rendered } from "../../markdown/render"
 import { folderCounts, SCAN_LIMIT } from "../../notes/files"
 import { switchSplit } from "../../notes/peek"
 import type { OpenRow } from "../../notes/projects"
@@ -42,7 +42,8 @@ export function noteView(s: UI, L: Layout, t: Theme, pic: ReturnType<typeof pict
   const src = file?.src ?? ""
   const fm = memo.fm(src)
   const picFiles = memo.picFiles(s.openPath, s.root, s.linkTree)
-  const picture = memo.picture(pic.mode, pic.cell.w, pic.cell.h, picFiles)
+  // a pane of a columns page is narrow: there maths keeps its own em instead of growing into the measure
+  const picture = memo.picture(pic.mode, pic.cell.w, pic.cell.h, picFiles, L.cols > 1 ? 1 : MATHS_ZOOM_MAX)
   const doc = memo.doc(fm.body, L.CW, t, s.hl, s.linkTree, s.headingStyle, picture)
   const view = s.source ? memo.source(src, L.CW, t, s.linkTree) : doc
   const st = memo.stats(fm.body)
@@ -520,6 +521,37 @@ function glossView(
   return { ...base, state, text: e.gloss, old: "", model: shortModel(e.model), secs: 0, stale }
 }
 
+/** Where a pane starting at `from` ends: it stops before a picture that its last row would cut in half. */
+function paneEnd(view: Rendered, from: number, rows: number): number {
+  const n = view.lines.length
+  const end = Math.min(from + rows, n)
+  for (const p of view.pics ?? []) {
+    if (p.rows <= 0 || p.rows > rows) continue // a picture taller than a pane has to give somewhere
+    if (p.line > from && p.line < end && p.line + p.rows > end) return p.line
+  }
+  return end
+}
+
+/** Where each pane of the band starting at `top` begins, then where the band ends: a picture is never cut. */
+export function paneBounds(view: Rendered, top: number, rows: number, cols: number): number[] {
+  const out = [top]
+  for (let k = 0; k < cols; k++) out.push(paneEnd(view, out[k]!, rows))
+  return out
+}
+
+/** The first line of every page of the columns flow: a page is whatever the panes hold, pictures kept whole. */
+export function columnPages(view: Rendered, rows: number, cols: number): number[] {
+  const n = view.lines.length
+  const out: number[] = []
+  let top = 0
+  while (top < n && out.length < 10000) {
+    out.push(top)
+    const end = paneBounds(view, top, rows, cols)[cols]!
+    top = end > top ? end : Math.min(top + rows, n)
+  }
+  return out.length ? out : [0]
+}
+
 /** The rows on screen: the section ranges, Spotlight's bright section, the window, the page and the Teleprompter flag. */
 export function readingWindow(
   s: UI,
@@ -541,16 +573,19 @@ export function readingWindow(
   if (columns) {
     // a columns page is the whole band of rows, taken from the whole document: the text runs left to right
     // and the next page carries on below the last pane, whatever the sections are
-    const count = Math.max(1, Math.ceil(view.lines.length / screenRows))
+    const panes = paneBounds(view, top, L.CH, Math.max(1, L.cols))
+    const pages = columnPages(view, L.CH, Math.max(1, L.cols))
+    let index = 0
+    while (index + 1 < pages.length && pages[index + 1]! <= top) index++
     pg = {
-      index: Math.min(count - 1, Math.floor(top / screenRows)),
-      count,
+      index,
+      count: pages.length,
       start: 0,
       end: view.lines.length,
       top,
       maxTop: Math.max(0, view.lines.length - screenRows),
     }
-    return { ranges, spot, win, pg, prompter: false }
+    return { ranges, spot, win, pg, prompter: false, panes, pages }
   }
   if (pages) {
     const index = sectionAt(ranges, top)
@@ -568,5 +603,5 @@ export function readingWindow(
   }
   /** Teleprompter option in effect (scroll flow only) */
   const prompter = L.zen && s.zenCfg.flow === "scroll" && s.zenCfg.prompter
-  return { ranges, spot, win, pg, prompter }
+  return { ranges, spot, win, pg, prompter, panes: [win.first], pages: null }
 }
