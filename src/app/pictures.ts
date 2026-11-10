@@ -134,6 +134,13 @@ export function pictureFiles(openPath: string | null, root: string, tree: FileNo
 /** What `pictureFiles` returns. */
 export type PictureFiles = ReturnType<typeof pictureFiles>
 
+/**
+ * Kitty's "delete every image": a placement outlives the node that drew it, so a big sheet's picture stays on screen
+ * under the text after the sheet closes (Ghostty keeps it until it is told to drop it). Sending it is harmless to a
+ * terminal that keeps no images, and the next frame transmits what is on screen again.
+ */
+export const KITTY_DELETE_ALL = "\x1b_Ga=d,d=A,q=2\x1b\\"
+
 /** One decoded image per file contents, box, cell size, background: `path#sig#cols×rows#cell#theme#t|o`. */
 export const picKey = (path: string, p: Pic, cell: Cell, theme: string, transparent: boolean) =>
   `${path}#${imageSig(path)}#${p.cols}x${p.rows}#${cell.w}x${cell.h}#${theme}#${transparent ? "t" : "o"}`

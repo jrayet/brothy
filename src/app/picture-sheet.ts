@@ -3,6 +3,7 @@
 import type { Pic, Rendered } from "../markdown/render"
 import type { AppCtx } from "./ctx"
 import type { Window } from "./PictureLayer"
+import { KITTY_DELETE_ALL } from "./pictures"
 
 /** The picture on line `n` (its rows, caption or placeholder), if any. */
 export const picAt = (view: Rendered, n: number): Pic | undefined => {
@@ -43,7 +44,17 @@ export function makePictureSheet({ set, derive }: AppCtx) {
       const p = y >= 0 && y < L.CH && n >= win.lo && n < win.hi ? picAt(view, n) : undefined
       if (p) set({ picture: { id: p.id } })
     },
-    closePicture: () => set({ picture: null }),
+    closePicture: () => {
+      const pixels = derive().picMode === "pixels"
+      set({ picture: null })
+      // the terminal keeps the sheet's placement: drop every one, the next frame sends the document's again
+      if (!pixels || process.env.BROTHY_NO_IMAGE_RESET) return
+      try {
+        process.stdout.write(KITTY_DELETE_ALL)
+      } catch {
+        // a closed stdout is not the note's problem
+      }
+    },
   }
 }
 export type PictureSheet = ReturnType<typeof makePictureSheet>
