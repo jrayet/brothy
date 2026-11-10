@@ -10,7 +10,7 @@ import type { Focus } from "./store"
 
 /** The teleprompter and the ways to move through the text in zen: pages and manual scrolling. */
 function makeZenMotion(c: AppCtx) {
-  const { set, derive, timers, setTop, scrollBy, stopRolling } = c
+  const { set, derive, timers, setTop, scrollBy, stopRolling, ui } = c
 
   // the rate is read afresh every line, so wpm changes, resizes and reloads apply at once
   const startRolling = () => {
@@ -29,9 +29,13 @@ function makeZenMotion(c: AppCtx) {
     timers.current.roll = setTimeout(tick, 1000 / prompterRate(d0.view.plain, d0.s.zenCfg.wpm))
   }
 
-  /** Pages flow: show page `i` (clamped) from its start. */
+  /** Pages flow: show page `i` (clamped) from its start. In columns a page is a band of rows of the whole text. */
   const goPage = (i: number) => {
-    const { ranges } = derive()
+    const { ranges, pg, L } = derive()
+    if (L.zen && ui.current.zenCfg.flow === "columns") {
+      const rows = L.CH * Math.max(1, L.cols)
+      return setTop(clamp(i, 0, (pg?.count ?? 1) - 1) * rows)
+    }
     setTop(ranges[clamp(i, 0, ranges.length - 1)]![0])
   }
 

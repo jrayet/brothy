@@ -423,8 +423,8 @@ export function scrollState(
   const geo = memo.geo(view)
   // typewriter: the scroll top *is* the reading line, so it may go down to the last line
   const tw = L.zen && s.zenCfg.flow === "scroll" && s.zenCfg.typewriter
-  // pages and columns: the scroll top is the page anchor (its section is the page), so it may be any line too
-  const pages = L.zen && (s.zenCfg.flow === "pages" || s.zenCfg.flow === "columns")
+  // pages: the scroll top is the page anchor (its section is the page), so it may be any line too
+  const pages = L.zen && s.zenCfg.flow === "pages"
   /** the rows one screen shows: columns read left to right, so a screen is `cols` panes of CH rows */
   const screenRows = L.CH * Math.max(1, L.cols)
   const maxTop = tw || pages ? Math.max(0, view.lines.length - 1) : Math.max(0, view.lines.length - screenRows + room)
@@ -531,18 +531,31 @@ export function readingWindow(
   const ranges = memo.ranges(view)
   /** the rows one screen shows, panes included: a page is as tall as the whole band */
   const screenRows = L.CH * Math.max(1, L.cols)
+  const columns = L.zen && s.zenCfg.flow === "columns"
   /** Spotlight: the section kept bright (the one holding the reading / top line) */
   const spot =
     L.zen && s.zenCfg.flow === "scroll" && s.zenCfg.spotlight ? (ranges[sectionAt(ranges, top)] ?? null) : null
   /** Rows on screen: row `i` shows line `first + i` when it lies in `lo..hi` (blank otherwise). */
   let win = { first: tw ? typewriterTop(top, L.CH) : top, lo: 0, hi: view.lines.length }
   let pg: { index: number; count: number; start: number; end: number; top: number; maxTop: number } | null = null
+  if (columns) {
+    // a columns page is the whole band of rows, taken from the whole document: the text runs left to right
+    // and the next page carries on below the last pane, whatever the sections are
+    const count = Math.max(1, Math.ceil(view.lines.length / screenRows))
+    pg = {
+      index: Math.min(count - 1, Math.floor(top / screenRows)),
+      count,
+      start: 0,
+      end: view.lines.length,
+      top,
+      maxTop: Math.max(0, view.lines.length - screenRows),
+    }
+    return { ranges, spot, win, pg, prompter: false }
+  }
   if (pages) {
     const index = sectionAt(ranges, top)
     const [start, end] = ranges[index]!
-    // pages centre a short section; columns start at the top left and fill the panes
     const slice = pageSlice([start, end], screenRows, top - start)
-    if (L.cols > 1) slice.pad = 0
     pg = {
       index,
       count: ranges.length,

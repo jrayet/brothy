@@ -76,7 +76,10 @@ export function makeZenActions(c: AppCtx, { aiJobs, zen }: Features, { jumpHeadi
       const { pg, L, prompter } = derive()
       if (k.name === "space" && prompter) return ui.current.rolling ? stopRolling() : startRolling()
       const step = L.CH - 2
-      if (!pg) return zenScroll((isDown(k) ? 1 : -1) * step)
+      const down = isDown(k) ? 1 : -1
+      // a columns page is a whole band: flipping reads on below it, it does not scroll by a pane
+      if (pg && ui.current.zenCfg.flow === "columns") return goPage(pg.index + down)
+      if (!pg) return zenScroll(down * step)
       // a tall page scrolls to its end first, then the next press flips
       if (isDown(k)) {
         if (pg.top < pg.maxTop) zenScroll(step)
@@ -96,7 +99,8 @@ export function makeZenActions(c: AppCtx, { aiJobs, zen }: Features, { jumpHeadi
       stopRolling()
       const dir = k.sequence === "]" || k.sequence === "}" ? 1 : -1
       const { pg } = derive()
-      if (pg) goPage(pg.index + dir)
+      // in columns, paging is the space bar's job: the section keys stay on the sections
+      if (pg && ui.current.zenCfg.flow !== "columns") goPage(pg.index + dir)
       else jumpHeading(dir)
     },
     zenCols: () => {
