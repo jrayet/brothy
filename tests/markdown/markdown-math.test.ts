@@ -3,7 +3,7 @@ import { rmSync } from "node:fs"
 import type { NativeImage } from "@opentui/core"
 import { PictureCache, picKey, pictureFiles } from "../../src/app/pictures"
 import { mathBox, render } from "../../src/markdown/render"
-import { ensureMath, mathInfo } from "../../src/math/latex"
+import { ensureMath, mathInfo, mathRequest } from "../../src/math/latex"
 import { scanTree } from "../../src/notes/files"
 import { brothy as t } from "../helpers/theme"
 import { makeTmp } from "../helpers/tmp"
@@ -30,7 +30,7 @@ describe("latex fences", () => {
   })
 
   test("a first render reserves a placeholder row and asks for the typeset", () => {
-    const src = fence("latex", "\\frac{1}{n}")
+    const src = fence("latex", "\\frac{1}{n+7}")
     const r = render(src, 80, t, pix)
     expect(r.math?.length).toBe(1)
     expect(r.pics?.length).toBe(1)
@@ -41,9 +41,8 @@ describe("latex fences", () => {
   test("typeset once, the block is a picture with reserved rows at its own aspect", async () => {
     const source = "\\frac{-b \\pm \\sqrt{b^2-4ac}}{2a}"
     const src = fence("latex", source)
-    const first = render(src, 80, t, pix)
-    const req = first.math![0]!
-    expect(await ensureMath([req])).toBe(true)
+    const req = mathRequest(source, t.text)
+    await ensureMath([req])
     expect(mathInfo(req.key)).not.toBeNull()
 
     const second = render(src, 80, t, pix)
@@ -74,8 +73,7 @@ describe("latex fences", () => {
 
   test("a second pass over the same source asks for nothing", async () => {
     const source = "\\sum_{i=1}^{n} i = \\frac{n(n+1)}{2}"
-    const first = render(fence("tex", source), 80, t, pix)
-    const req = first.math![0]!
+    const req = mathRequest(source, t.text)
     await ensureMath([req])
     const fresh = render(fence("tex", source), 80, t, pix)
     expect(fresh.math ?? []).toEqual([])
@@ -128,10 +126,11 @@ describe("latex fences", () => {
 
   test("the colour is part of the key, so a theme change typesets again", async () => {
     const source = "\\alpha + \\beta"
-    const dark = render(fence("latex", source), 80, t, pix).math![0]!
+    const dark = mathRequest(source, t.text)
     await ensureMath([dark])
     const tinted = { ...t, text: "#123456" }
     const other = render(fence("latex", source), 80, tinted, pix)
-    expect(other.math?.[0]?.key).not.toBe(dark.key)
+    expect(other.math?.[0]?.key).toBe(mathRequest(source, "#123456").key)
+    expect(mathRequest(source, "#123456").key).not.toBe(dark.key)
   })
 })
