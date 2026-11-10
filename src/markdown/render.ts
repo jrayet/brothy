@@ -545,13 +545,14 @@ export function picBox(
 }
 
 /** How many ems a maths block's reference raster is shown at: MathJax's size is a formula's own em, not a cell's. */
-export const MATHS_EM_CELLS = 1.65
+export const MATHS_EM_CELLS = 1.2
 /** Past this much upscaling a formula would be wider than the measure anyway: the box caps it and the raster keeps the aspect. */
 export const MATHS_ZOOM_MAX = 1.6
 
 /**
- * A maths block's box in cells: picBox at the size `size` would be drawn with one em a cell and a half, zoomed by how
- * far the measure leaves it short (a formula's em says nothing about how wide the note is), then laid out as a picture.
+ * A maths block's box in cells: picBox at the size `size` would be drawn at MATHS_EM_CELLS cell heights to the em, zoomed
+ * by how far the measure leaves it short (a formula's em says nothing about how wide the note is), then laid out as a
+ * picture.
  */
 export function mathBox(
   size: { w: number; h: number },
