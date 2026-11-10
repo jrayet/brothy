@@ -6,7 +6,7 @@
 import type { Token, Tokens } from "marked"
 import { A, type Span, safe, safeLine } from "../lib/spans"
 import { truncate as clip, graphemes, pushSpan, spanWidth, width, wrap } from "../lib/text"
-import { isMathLang, type MathRequest, mathInfo, mathRequest } from "../math/latex"
+import { isMathLang, type MathRequest, mathRequest } from "../math/latex"
 import { isMarkdown } from "../notes/files"
 import { isImagePath, isRemoteImage, parseImageSize, QUERY_OR_ANCHOR } from "../notes/images"
 import type { Theme } from "../theme/theme"
@@ -788,7 +788,9 @@ function mathBlock(ctx: Ctx, source: string, f: BlockFrame): boolean {
   const id = ctx.pics.length
   const pic: Pic = { id, line: ctx.lines.length, rows: 0, cols: 0, left: 0, src: req.key, alt: "maths" }
   ctx.pics.push(pic)
-  const size = mathInfo(req.key)
+  // through `info` like any other picture, so `pictureFiles` learns the cache file the decode reads (its `file` lookup)
+  const got = p.info(req.key)
+  const size = got && !("problem" in got) ? got : null
   if (!size) {
     if (!ctx.math.some((r) => r.key === req.key)) ctx.math.push(req)
     ctx.lines.push({
