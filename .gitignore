@@ -14,3 +14,7 @@ dist/
 .claude/
 site/.astro/
 site/src/generated/
+
+# bun build output
+.c63b7a47fb80b2eb-00000000.bun-build
+brothy

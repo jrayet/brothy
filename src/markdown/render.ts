@@ -6,6 +6,7 @@
 import type { Token, Tokens } from "marked"
 import { A, type Span, safe, safeLine } from "../lib/spans"
 import { truncate as clip, graphemes, pushSpan, spanWidth, width, wrap } from "../lib/text"
+import { isMathLang, type MathRequest, mathInfo, mathRequest } from "../math/latex"
 import { isMarkdown } from "../notes/files"
 import { isImagePath, isRemoteImage, parseImageSize, QUERY_OR_ANCHOR } from "../notes/images"
 import type { Theme } from "../theme/theme"
@@ -70,6 +71,8 @@ export interface Rendered {
   srcRow?: number[]
   /** Preview only, with `RenderOpts.picture`: the pictures laid out as block images */
   pics?: Pic[]
+  /** Preview only: LaTeX blocks still to typeset (`ensureMath`), drawn as placeholders until they land */
+  math?: MathRequest[]
 }
 
 /** A rendering's line geometry, which scroll offsets are measured against (`remapTop`): heading lines and total line count. */
@@ -381,6 +384,7 @@ interface Ctx {
   sink: LinkSink
   headingStyle: HeadingStyle
   pics: Pic[]
+  math: MathRequest[]
   picture?: PictureOpts
 }
 
@@ -768,7 +772,52 @@ function codeBlock(ctx: Ctx, tok: Token, f: BlockFrame) {
   const c = tokenOf(tok, "code")
   const lang = (c.lang ?? "").split(/\s/)[0] ?? ""
   if (DATAVIEW_LANGS.has(lang.toLowerCase())) queryRow(ctx, c, lang, f)
+  else if (isMathLang(lang) && mathBlock(ctx, c.text, f)) return
   else codeFence(ctx, c, lang, f)
+}
+
+/**
+ * A LaTeX fence: reserved rows for the typeset image once MathJax has drawn it, else a placeholder row that also asks
+ * for it. Returns whether it handled the block; outside Preview (no picture layout) the source stays as a code fence.
+ */
+function mathBlock(ctx: Ctx, source: string, f: BlockFrame): boolean {
+  const p = ctx.picture
+  if (!p || !source.trim()) return false
+  const { t } = ctx
+  const req = mathRequest(source, t.text)
+  const id = ctx.pics.length
+  const pic: Pic = { id, line: ctx.lines.length, rows: 0, cols: 0, left: 0, src: req.key, alt: "maths" }
+  ctx.pics.push(pic)
+  const size = mathInfo(req.key)
+  if (!size) {
+    if (!ctx.math.some((r) => r.key === req.key)) ctx.math.push(req)
+    ctx.lines.push({
+      spans: [...f.rest, { text: "▣ ", fg: t.primary }, { text: "typesetting…", fg: t.textMuted }],
+      pic: id,
+    })
+    spacer(ctx, f.rest)
+    return true
+  }
+  if (p.mode === "text") {
+    ctx.lines.push({
+      spans: [
+        ...f.rest,
+        { text: "▣ ", fg: t.primary },
+        { text: `maths · ${size.w}×${size.h} · ⏎ view`, fg: t.textMuted },
+      ],
+      pic: id,
+    })
+    spacer(ctx, f.rest)
+    return true
+  }
+  const indent = spanWidth(f.rest)
+  const room = f.max - indent
+  const box = picBox(size, null, room, p.cell)
+  Object.assign(pic, box, { left: indent + Math.floor((room - box.cols) / 2) })
+  for (let i = 0; i < box.rows; i++)
+    ctx.lines.push({ spans: i === 0 ? f.pre() : f.rest.map((s) => ({ ...s })), pic: id })
+  spacer(ctx, f.rest)
+  return true
 }
 
 function ruleBlock(ctx: Ctx, _tok: Token, f: BlockFrame) {
@@ -991,6 +1040,7 @@ export function render(src: string, max: number, t: Theme, opts: RenderOpts = {}
     sink: { links: [], exists: opts.exists },
     headingStyle: opts.headings ?? "classic",
     pics: [],
+    math: [],
     picture: opts.picture,
   }
   blocks(ctx, tokens, Math.max(MIN_MEASURE, max), [], [])
@@ -1026,5 +1076,6 @@ export function render(src: string, max: number, t: Theme, opts: RenderOpts = {}
     pending: ctx.pending,
     links: ctx.sink.links,
     pics: ctx.pics,
+    math: ctx.math,
   }
 }

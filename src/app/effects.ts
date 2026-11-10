@@ -9,6 +9,7 @@ import { reloadToast } from "../ai/delta"
 import { plural } from "../lib/text"
 import { ensureHighlights } from "../markdown/highlight"
 import { pendingHighlights, type Rendered } from "../markdown/render"
+import { ensureMath } from "../math/latex"
 import { watchPath } from "../notes/watch"
 import { STDIN } from "../notes/workspace"
 import { themes } from "../theme/theme"
@@ -40,6 +41,8 @@ export function useAppEffects(c: AppCtx, { dropDelta, ensureLinks, recordProject
   useEffect(animateWelcome)
   // code blocks render plain first; once their parser results land, re-render the document
   useEffect(() => colourIn(c, c.derive().doc, c.hlSeen))
+  // LaTeX blocks lay out as placeholders first; once typeset, re-render so the image takes their rows
+  useEffect(() => mathIn(c, c.derive().doc, c.mathSeen))
 }
 
 /** Live reload of the open note, then its change baseline. */
@@ -221,6 +224,17 @@ export function useRenderEffects(
 }
 
 /** Ask for `r`'s code highlights unless `seen` already did; once they land, re-render with them. */
+/** Typeset the LaTeX blocks `r` waits on unless `seen` already did; once they land, re-render with their images. */
+function mathIn({ ui, set, alive }: AppCtx, r: Rendered | null, seen: { current: Rendered | null }) {
+  if (!r || r === seen.current) return
+  seen.current = r
+  const reqs = r.math ?? []
+  if (!reqs.length) return
+  ensureMath(reqs).then((changed) => {
+    if (changed && alive.current) set({ hl: ui.current.hl + 1 })
+  })
+}
+
 function colourIn({ ui, set, alive }: AppCtx, r: Rendered | null, seen: { current: Rendered | null }) {
   if (!r || r === seen.current) return
   seen.current = r

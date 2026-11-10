@@ -71,6 +71,8 @@ starts zen and `q` quits.
 
 - Renders headings, tables that shrink to fit, highlighted code and task lists at a readable
   80 columns, with `s` for the Markdown source. [Reading](https://jackmort.github.io/brothy/usage/reading/)
+- Typesets LaTeX fences (`latex`, `tex`, `math`, `katex`) into images where the terminal draws
+  them, and names their size where it does not.
 - Reads Obsidian notes as they are: wikilinks, embeds, callouts, `==highlights==`, `%%comments%%`,
   properties and dataview blocks. [Obsidian notes](https://jackmort.github.io/brothy/usage/obsidian-notes/)
 - Finds things fast: `ctrl+p` over every note, heading and line with a preview, `f` to follow a

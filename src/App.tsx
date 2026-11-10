@@ -225,6 +225,7 @@ function useAppRefs(stdin: string | undefined, W: number, H: number) {
     ...useAIRefs(),
     alive: useRef(true),
     hlSeen: useRef<Rendered | null>(null),
+    mathSeen: useRef<Rendered | null>(null),
     left: useRef(false),
     welcome: useRef<WelcomeState>({ hl: 1, gen: 0, tick: STILL_TICK, ink: INK_STEPS - 1, run: "idle", at: 0, W, H }),
     graphImg: useRef<GraphImage>({ px: null, img: null }),

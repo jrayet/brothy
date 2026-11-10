@@ -8,6 +8,7 @@ import { type CliRenderer, NativeImage } from "@opentui/core"
 import { type GraphTerm, graphTerm } from "../graph/sheet"
 import { safeLine } from "../lib/spans"
 import type { Pic, PictureOpts, Rendered } from "../markdown/render"
+import { mathFile, mathInfo } from "../math/latex"
 import { type FileNode, findVault } from "../notes/files"
 import {
   type ImageFormat,
@@ -112,6 +113,14 @@ export function pictureFiles(openPath: string | null, root: string, tree: FileNo
   const roots = { vault: findVault(dirname(note)), root }
   const files = new Map<string, string>()
   const info: PictureOpts["info"] = (src) => {
+    // typeset maths: already an SVG in the cache, so it needs no resolution against the note's folder
+    if (src.startsWith("math:")) {
+      const size = mathInfo(src)
+      if (!size) return null
+      const file = mathFile(src)
+      if (file) files.set(src, file)
+      return { w: size.w, h: size.h }
+    }
     if (!isImagePath(src) && !isImagePath(src.replace(QUERY_OR_ANCHOR, "")) && !isRemoteImage(src)) return null
     const file = resolveImage(src, note, roots, tree)
     if (typeof file !== "string") return file

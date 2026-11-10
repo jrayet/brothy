@@ -77,6 +77,8 @@ export interface Base extends DeriveRefs {
   alive: { current: boolean }
   /** the document whose code highlighting was last asked for */
   hlSeen: { current: Rendered | null }
+  /** the document whose LaTeX blocks were last asked for */
+  mathSeen: { current: Rendered | null }
   /** `leave` has run: the last project record is written once */
   left: { current: boolean }
   welcome: { current: WelcomeState }
