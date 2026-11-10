@@ -27,6 +27,7 @@ import {
   sidenoteLayout,
   waitText,
 } from "../ui/footnote"
+import { COL_GAP } from "../ui/layout"
 import { MINI_W, miniCells, miniColors, miniJump } from "../ui/minimap"
 import { type LinkSpot, markMatches, overlayAt } from "../ui/nav"
 import { Welcome } from "../ui/overlay"
@@ -151,13 +152,20 @@ function zenLines(c: AppCtx, d: Derived) {
   const bottom = sheet && !side ? sheetRows(t, sheet, CW, CH, ink) : []
   const marks = side?.marks ?? sheetMark(d, ink)
   const sheetAt = CH - bottom.length
-  return (
-    <box key="zen-lines" style={{ flexDirection: "row", height: CH, flexShrink: 0 }}>
-      <box key="zen-text" style={{ flexDirection: "column", width: CW + 2, height: CH, flexShrink: 0 }}>
+  const cols = Math.max(1, d.L.cols)
+  // columns flow: panes side by side, each drawing the next CH rows; the gloss sheet sits in the last one
+  const pane = (col: number) => {
+    const first = d.win.first + col * CH
+    const last = col === cols - 1
+    return (
+      <box
+        key={`zen-pane-${col}`}
+        style={{ flexDirection: "column", width: CW + 2, height: CH, flexShrink: 0, paddingLeft: col ? COL_GAP : 0 }}
+      >
         {Array.from({ length: CH }, (_, i) => {
           const r = i - sheetAt
-          if (r >= 0) return <Row key={"gloss" + r} spans={[{ text: "  " }, ...bottom[r]!]} />
-          const n = d.win.first + i
+          if (last && r >= 0) return <Row key={"gloss" + r} spans={[{ text: "  " }, ...bottom[r]!]} />
+          const n = first + i
           const head = { text: d.tw && n === d.top ? "▸" : " ", fg: gutter }
           if (n >= d.win.lo && n < d.win.hi && reservedBlank(d.view, n))
             return (
@@ -167,7 +175,14 @@ function zenLines(c: AppCtx, d: Derived) {
             )
           return <Row key={n} spans={markedLine(head, zenLine(d, n), marks.get(n), CW)} />
         })}
-        {pictureLayer(c, d, sheetAt, { ...d.win, dx: 2 })}
+        {pictureLayer(c, d, last ? sheetAt : CH, { first, lo: d.win.lo, hi: d.win.hi, dx: 2 })}
+      </box>
+    )
+  }
+  return (
+    <box key="zen-lines" style={{ flexDirection: "row", height: CH, flexShrink: 0 }}>
+      <box key="zen-text" style={{ flexDirection: "row", height: CH, flexShrink: 0 }}>
+        {Array.from({ length: cols }, (_, col) => pane(col))}
       </box>
       {side ? (
         <box

@@ -270,6 +270,7 @@ const KEYMAP = {
     hint: "section",
   },
   zenMeasure: { modes: ["zen"], keys: ["<", ">"], label: "< >", desc: "narrower / wider text (saved)" },
+  zenCols: { modes: ["zen"], keys: ["|"], label: "|", desc: "columns: 1 · 2 · 3 · 4 side by side (saved)" },
   zenSpeed: { modes: ["zen"], keys: ["+", "-"], label: "+ -", desc: "teleprompter faster / slower (saved)" },
   zenGloss: {
     modes: ["zen"],

@@ -94,6 +94,26 @@ test("zen drops the panel and wraps at its own measure; with Source shown it is 
   expect(at(120, 40, { zen: true, minimap: true }).mini).toBe(false)
 })
 
+test("columns flow: panes side by side, the measure each, while they fit", () => {
+  const two = at(200, 50, { zen: true, zenCfg: { ...ZEN_DEFAULTS, flow: "columns", cols: 2 } })
+  expect(two).toMatchObject({ cols: 2, CW: ZEN_DEFAULTS.measure, padL: 23 })
+  // the band is the panes, their gutters and the gaps, centred in the width
+  expect(2 * (two.CW + 2) + 3).toBe(151)
+  // four panes share 200 columns: the measure shrinks to fit them
+  const four = at(200, 50, { zen: true, zenCfg: { ...ZEN_DEFAULTS, flow: "columns", cols: 4 } })
+  expect(four.cols).toBe(4)
+  expect(four.CW).toBeLessThan(Number(ZEN_DEFAULTS.measure))
+  // a narrow window gives up panes rather than the measure's floor: 60 columns holds two, 40 only one
+  expect(at(60, 40, { zen: true, zenCfg: { ...ZEN_DEFAULTS, flow: "columns", cols: 3 } }).cols).toBe(2)
+  expect(at(40, 40, { zen: true, zenCfg: { ...ZEN_DEFAULTS, flow: "columns", cols: 3 } }).cols).toBe(1)
+  // one pane everywhere else: not zen, or zen in another flow
+  expect(at(200, 50).cols).toBe(1)
+  expect(at(200, 50, { zen: true }).cols).toBe(1)
+  // the panes never overflow the width
+  const tight = at(100, 40, { zen: true, zenCfg: { ...ZEN_DEFAULTS, flow: "columns", cols: 2 } })
+  expect(tight.cols * (tight.CW + 2) + 3).toBeLessThanOrEqual(tight.areaW)
+})
+
 test("the welcome page (no note open) has the whole width: no panel, drawer or minimap", () => {
   expect(at(120, 40, { openPath: null, minimap: true })).toMatchObject({
     shown: false,

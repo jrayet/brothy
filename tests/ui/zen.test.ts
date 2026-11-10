@@ -30,6 +30,7 @@ describe("normalizeZen", () => {
       prompter: false,
       wpm: 220,
       measure: 72,
+      cols: 2,
     })
   })
   for (const bad of [null, 5, "x", [1], true]) {
@@ -50,6 +51,13 @@ describe("normalizeZen", () => {
     expect(normalizeZen({ wpm: NaN, measure: Infinity })).toMatchObject({ wpm: 220, measure: 72 })
   })
   test("an unknown flow falls back to scroll", () => expect(normalizeZen({ flow: "spiral" }).flow).toBe("scroll"))
+  test("columns is a flow, and the pane count is clamped", () => {
+    expect(normalizeZen({ flow: "columns" }).flow).toBe("columns")
+    expect(normalizeZen({ cols: 3 }).cols).toBe(3)
+    expect(normalizeZen({ cols: 9 }).cols).toBe(4)
+    expect(normalizeZen({ cols: 0 }).cols).toBe(1)
+    expect(normalizeZen({ cols: 2.6 }).cols).toBe(3)
+  })
 })
 
 describe("pickZen", () => {
@@ -71,6 +79,7 @@ describe("settings rows", () => {
       "on",
       "off · ◀ 220 wpm ▶",
       "◀ 72 ▶",
+      "◀ 2 ▶",
     ])
     expect(zenRows(ZEN_DEFAULTS).map((r) => r.label)).toEqual([
       "Flow",
@@ -79,17 +88,30 @@ describe("settings rows", () => {
       "Ghost chrome",
       "Teleprompter",
       "Measure",
+      "Columns",
     ])
   })
   test("pages greys out the scroll-only aids", () => {
     const rows = zenRows({ ...ZEN_DEFAULTS, flow: "pages" })
-    expect(rows.filter((r) => r.disabled).map((r) => r.id)).toEqual(["spotlight", "typewriter", "prompter"])
+    expect(rows.filter((r) => r.disabled).map((r) => r.id)).toEqual(["spotlight", "typewriter", "prompter", "cols"])
     expect(rows[0]!.value).toBe("◀ pages ▶")
+  })
+  test("columns greys out the scroll-only aids and wakes the pane dial", () => {
+    const rows = zenRows({ ...ZEN_DEFAULTS, flow: "columns" })
+    expect(rows.filter((r) => r.disabled).map((r) => r.id)).toEqual(["spotlight", "typewriter", "prompter"])
+    expect(rows.find((r) => r.id === "cols")!.value).toBe("◀ 2 ▶")
   })
   test("space toggles, arrows adjust", () => {
     const c = ZEN_DEFAULTS
     expect(zenAdjust(c, "flow", 0).flow).toBe("pages")
     expect(zenAdjust(c, "flow", -1).flow).toBe("pages")
+    // the dial walks scroll → pages → columns → scroll
+    expect(zenAdjust({ ...c, flow: "pages" }, "flow", 0).flow).toBe("columns")
+    expect(zenAdjust({ ...c, flow: "columns" }, "flow", 0).flow).toBe("scroll")
+    expect(zenAdjust(c, "cols", 0)).toEqual(c)
+    expect(zenAdjust(c, "cols", 1)).toEqual({ ...c, cols: 3 })
+    expect(zenAdjust({ ...c, cols: 4 }, "cols", 1).cols).toBe(4)
+    expect(zenAdjust({ ...c, cols: 1 }, "cols", -1).cols).toBe(1)
     expect(zenAdjust(c, "spotlight", 0).spotlight).toBe(false)
     expect(zenAdjust(c, "ghost", 1).ghost).toBe(false)
     expect(zenAdjust(c, "prompter", 0).prompter).toBe(true)

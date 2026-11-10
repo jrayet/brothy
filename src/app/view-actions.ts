@@ -10,7 +10,7 @@ import { nextSection, stepRow } from "../notes/vault"
 import type { PicturesPref } from "../system/config"
 import { pickMove, pickQuery, pickStep } from "../theme/themepick"
 import { helpLayout } from "../ui/help"
-import { stepMeasure, ZEN_ROWS, ZEN_WPM } from "../ui/zen"
+import { stepMeasure, ZEN_COLS, ZEN_ROWS, ZEN_WPM } from "../ui/zen"
 import type { Actions, Features, Moves } from "./actions"
 import type { AppCtx } from "./ctx"
 import { erase } from "./input"
@@ -98,6 +98,12 @@ export function makeZenActions(c: AppCtx, { aiJobs, zen }: Features, { jumpHeadi
       const { pg } = derive()
       if (pg) goPage(pg.index + dir)
       else jumpHeading(dir)
+    },
+    zenCols: () => {
+      // past the last pane the dial comes back to one, which is the scroll flow again
+      const next = ui.current.zenCfg.cols >= ZEN_COLS.max ? 1 : ui.current.zenCfg.cols + 1
+      const flow = next === 1 ? "scroll" : "columns"
+      if (setZen({ cols: next, flow }, true)) flash(next === 1 ? "one column" : `${next} columns`)
     },
     zenMeasure: (k) => {
       if (setZen({ measure: stepMeasure(ui.current.zenCfg.measure, k.sequence === ">" ? 1 : -1) }, true))

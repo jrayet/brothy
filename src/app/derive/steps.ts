@@ -423,9 +423,11 @@ export function scrollState(
   const geo = memo.geo(view)
   // typewriter: the scroll top *is* the reading line, so it may go down to the last line
   const tw = L.zen && s.zenCfg.flow === "scroll" && s.zenCfg.typewriter
-  // pages: the scroll top is the page anchor (its section is the page), so it may be any line too
-  const pages = L.zen && s.zenCfg.flow === "pages"
-  const maxTop = tw || pages ? Math.max(0, view.lines.length - 1) : Math.max(0, view.lines.length - L.CH + room)
+  // pages and columns: the scroll top is the page anchor (its section is the page), so it may be any line too
+  const pages = L.zen && (s.zenCfg.flow === "pages" || s.zenCfg.flow === "columns")
+  /** the rows one screen shows: columns read left to right, so a screen is `cols` panes of CH rows */
+  const screenRows = L.CH * Math.max(1, L.cols)
+  const maxTop = tw || pages ? Math.max(0, view.lines.length - 1) : Math.max(0, view.lines.length - screenRows + room)
   const entry = scrolls.get(scrollKey)
   if (entry && entry.geo !== geo) {
     // re-laid out (resize, reload): keep the reading position
@@ -527,6 +529,8 @@ export function readingWindow(
   memo: Memo,
 ) {
   const ranges = memo.ranges(view)
+  /** the rows one screen shows, panes included: a page is as tall as the whole band */
+  const screenRows = L.CH * Math.max(1, L.cols)
   /** Spotlight: the section kept bright (the one holding the reading / top line) */
   const spot =
     L.zen && s.zenCfg.flow === "scroll" && s.zenCfg.spotlight ? (ranges[sectionAt(ranges, top)] ?? null) : null
@@ -536,8 +540,17 @@ export function readingWindow(
   if (pages) {
     const index = sectionAt(ranges, top)
     const [start, end] = ranges[index]!
-    const slice = pageSlice([start, end], L.CH, top - start)
-    pg = { index, count: ranges.length, start, end, top: slice.top, maxTop: start + Math.max(0, end - start - L.CH) }
+    // pages centre a short section; columns start at the top left and fill the panes
+    const slice = pageSlice([start, end], screenRows, top - start)
+    if (L.cols > 1) slice.pad = 0
+    pg = {
+      index,
+      count: ranges.length,
+      start,
+      end,
+      top: slice.top,
+      maxTop: start + Math.max(0, end - start - screenRows),
+    }
     win = { first: slice.top - slice.pad, lo: slice.top, hi: end }
   }
   /** Teleprompter option in effect (scroll flow only) */

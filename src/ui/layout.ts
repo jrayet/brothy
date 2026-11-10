@@ -2,6 +2,7 @@
 // terminal size and the store's view state.
 import { MINI_MIN_W, MINI_W } from "./minimap"
 import type { ZenConfig } from "./zen"
+import { ZEN_COLS } from "./zen"
 
 /** Reading measure: the document never wraps wider than this. */
 export const MEASURE = 80
@@ -18,6 +19,10 @@ const DRAWER_MARGIN = 8
 const MIN_MEASURE = 20
 /** Rows of the `/` popup list at most. */
 const MAX_LIST_ROWS = 16
+/** Blank columns between two panes of zen's columns flow. */
+export const COL_GAP = 3
+/** The gutter zen keeps left of each pane's text (the typewriter marker). */
+const ZEN_GUTTER = 2
 
 /** Below this width the panel is a drawer over the text instead of a column beside it. */
 export const DRAWER_BELOW = 100
@@ -56,8 +61,17 @@ export function layout(W: number, H: number, s: LayoutState) {
   const areaW = W - 2 - (inline ? SW + 1 : 0)
   const plain = s.wide ? "full" : MEASURE
   const want = zen ? s.zenCfg.measure : plain
-  let CW = Math.max(MIN_MEASURE, want === "full" ? areaW - 4 : Math.min(want, areaW - 4))
-  let padL = Math.max(0, Math.floor((areaW - CW) / 2))
+  // zen's columns flow: panes side by side, each the measure wide, while that many still fit
+  const avail = areaW - 4
+  const fits = (n: number) => Math.floor((avail - (n - 1) * COL_GAP) / n) - ZEN_GUTTER >= MIN_MEASURE
+  let cols = zen && s.zenCfg.flow === "columns" ? Math.min(s.zenCfg.cols, ZEN_COLS.max) : 1
+  while (cols > 1 && !fits(cols)) cols--
+  // one pane keeps the old measure exactly; several share the width, gutter and gaps included
+  const shared = Math.floor((avail - (cols - 1) * COL_GAP) / cols)
+  const paneCap = Math.max(MIN_MEASURE, cols > 1 ? shared - ZEN_GUTTER : shared)
+  let CW = Math.max(MIN_MEASURE, Math.min(want === "full" ? avail : want, paneCap))
+  const band = cols * (CW + ZEN_GUTTER) + (cols - 1) * COL_GAP
+  let padL = cols > 1 ? Math.max(0, Math.floor((areaW - band) / 2)) : Math.max(0, Math.floor((areaW - CW) / 2))
   // the minimap takes the last MINI_W columns (the right margin and padding): the text keeps its
   // column while it fits left of the minimap's gap, then the measure shrinks (left margin kept)
   const mini = s.minimap && !zen && !welcome && W >= MINI_MIN_W
@@ -79,6 +93,8 @@ export function layout(W: number, H: number, s: LayoutState) {
     bodyH,
     areaW,
     CW,
+    /** panes side by side (zen's columns flow; 1 elsewhere) */
+    cols,
     CH: bodyH,
     /** document left margin inside its area */
     padL,

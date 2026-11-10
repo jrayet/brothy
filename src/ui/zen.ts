@@ -6,7 +6,7 @@ import { clamp } from "../lib/text"
 import { mix, type Theme } from "../theme/theme"
 
 export interface ZenConfig {
-  flow: "scroll" | "pages"
+  flow: "scroll" | "pages" | "columns"
   spotlight: boolean
   typewriter: boolean
   ghost: boolean
@@ -16,6 +16,8 @@ export interface ZenConfig {
   wpm: number
   /** Wrap width in columns, or `"full"` for the whole pane (minus margins). */
   measure: number | "full"
+  /** Columns flow: panes side by side, read left to right, then the next page down. */
+  cols: number
 }
 
 export const ZEN_DEFAULTS: ZenConfig = {
@@ -26,22 +28,28 @@ export const ZEN_DEFAULTS: ZenConfig = {
   prompter: false,
   wpm: 220,
   measure: 72,
+  cols: 2,
 }
 
 export const ZEN_WPM = { min: 120, max: 400, step: 20 } as const
+export const ZEN_COLS = { min: 1, max: 4 } as const
 const ZEN_MEASURE = { min: 60, max: 100, step: 4 } as const
 
 const BOOLS = ["spotlight", "typewriter", "ghost", "prompter"] as const
+/** The flow dial's order: `◀ space ▶` on the Flow row walks this. */
+const FLOWS = ["scroll", "pages", "columns"] as const
 
 /** The valid fields of a raw `zen` config value (numbers rounded and clamped); everything else is dropped. */
 export function pickZen(raw: unknown): Partial<ZenConfig> {
   if (!isRecord(raw)) return {}
   const out: Partial<ZenConfig> = {}
-  if (raw.flow === "scroll" || raw.flow === "pages") out.flow = raw.flow
+  if (raw.flow === "scroll" || raw.flow === "pages" || raw.flow === "columns") out.flow = raw.flow
   for (const k of BOOLS) {
     const v = raw[k]
     if (typeof v === "boolean") out[k] = v
   }
+  if (typeof raw.cols === "number" && Number.isFinite(raw.cols))
+    out.cols = clamp(Math.round(raw.cols), ZEN_COLS.min, ZEN_COLS.max)
   if (typeof raw.wpm === "number" && Number.isFinite(raw.wpm))
     out.wpm = clamp(Math.round(raw.wpm), ZEN_WPM.min, ZEN_WPM.max)
   if (raw.measure === "full") out.measure = "full"
@@ -61,9 +69,9 @@ export const normalizeZen = (raw: unknown): ZenConfig => ({ ...ZEN_DEFAULTS, ...
 
 // ------------------------------------------------------------- settings popup
 
-export type ZenRowId = "flow" | "spotlight" | "typewriter" | "ghost" | "prompter" | "measure"
+export type ZenRowId = "flow" | "spotlight" | "typewriter" | "ghost" | "prompter" | "measure" | "cols"
 /** Settings popup rows, top to bottom. */
-export const ZEN_ROWS: readonly ZenRowId[] = ["flow", "spotlight", "typewriter", "ghost", "prompter", "measure"]
+export const ZEN_ROWS: readonly ZenRowId[] = ["flow", "spotlight", "typewriter", "ghost", "prompter", "measure", "cols"]
 
 export interface ZenRow {
   id: ZenRowId
@@ -77,14 +85,17 @@ const onOff = (b: boolean) => (b ? "on" : "off")
 
 /** The settings popup rows for `c`: label, value as drawn, and whether the current flow ignores the option. */
 export function zenRows(c: ZenConfig): ZenRow[] {
-  const pages = c.flow === "pages"
+  // spotlight, typewriter and the teleprompter read the text one section at a time: scroll flow only
+  const still = c.flow === "scroll"
+  const cols = c.flow === "columns"
   return [
     { id: "flow", label: "Flow", value: `◀ ${c.flow} ▶`, disabled: false },
-    { id: "spotlight", label: "Spotlight", value: onOff(c.spotlight), disabled: pages },
-    { id: "typewriter", label: "Typewriter", value: onOff(c.typewriter), disabled: pages },
+    { id: "spotlight", label: "Spotlight", value: onOff(c.spotlight), disabled: !still },
+    { id: "typewriter", label: "Typewriter", value: onOff(c.typewriter), disabled: !still },
     { id: "ghost", label: "Ghost chrome", value: onOff(c.ghost), disabled: false },
-    { id: "prompter", label: "Teleprompter", value: `${onOff(c.prompter)} · ◀ ${c.wpm} wpm ▶`, disabled: pages },
+    { id: "prompter", label: "Teleprompter", value: `${onOff(c.prompter)} · ◀ ${c.wpm} wpm ▶`, disabled: !still },
     { id: "measure", label: "Measure", value: `◀ ${c.measure} ▶`, disabled: false },
+    { id: "cols", label: "Columns", value: `◀ ${c.cols} ▶`, disabled: !cols },
   ]
 }
 
@@ -92,7 +103,9 @@ export function zenRows(c: ZenConfig): ZenRow[] {
 export function zenAdjust(c: ZenConfig, id: ZenRowId, dir: -1 | 0 | 1): ZenConfig {
   switch (id) {
     case "flow":
-      return { ...c, flow: c.flow === "scroll" ? "pages" : "scroll" }
+      return { ...c, flow: FLOWS[(FLOWS.indexOf(c.flow) + 1) % FLOWS.length]! }
+    case "cols":
+      return dir === 0 ? c : { ...c, cols: clamp(c.cols + dir, ZEN_COLS.min, ZEN_COLS.max) }
     case "prompter":
       return dir === 0 ? { ...c, prompter: !c.prompter } : normalizeZen({ ...c, wpm: c.wpm + dir * ZEN_WPM.step })
     case "measure":
