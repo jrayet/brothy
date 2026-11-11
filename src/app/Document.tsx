@@ -178,6 +178,16 @@ function zenLines(c: AppCtx, d: Derived) {
             )
           return <Row key={n} spans={markedLine(head, zenLine(d, n), marks.get(n), CW)} />
         })}
+        {col ? (
+          <box
+            key={`zen-rule-${col}`}
+            style={{ position: "absolute", left: 1, top: 0, width: 1, height: CH, flexDirection: "column" }}
+          >
+            {Array.from({ length: CH }, (_, i) => (
+              <Row key={`rule-${i}`} spans={[{ text: "│", fg: t.borderSubtle }]} />
+            ))}
+          </box>
+        ) : null}
         {pictureLayer(c, d, last ? sheetAt : CH, { first, lo: d.win.lo, hi: Math.min(d.win.hi, stop), dx: 2 })}
       </box>
     )
