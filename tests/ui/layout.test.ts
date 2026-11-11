@@ -96,23 +96,23 @@ test("zen drops the panel and wraps at its own measure; with Source shown it is 
 
 test("columns flow: panes side by side, at least the measure each, filled out to the width", () => {
   // two panes at 200 columns: three would need 74 columns a pane, and the measure is 72, so two fill the width
-  const two = at(200, 50, { zen: true, zenCfg: { ...ZEN_DEFAULTS, flow: "columns", cols: 2 } })
+  const two = at(200, 50, { zen: true, zenCfg: { ...ZEN_DEFAULTS, flow: "columns" } })
   expect(two).toMatchObject({ cols: 2, CW: 93, padL: 2 })
   expect(2 * (two.CW + 2) + 3).toBe(193)
   // four panes share 340 columns and fill it, each at the measure's floor
-  const four = at(340, 50, { zen: true, zenCfg: { ...ZEN_DEFAULTS, flow: "columns", cols: 4 } })
+  const four = at(340, 50, { zen: true, zenCfg: { ...ZEN_DEFAULTS, flow: "columns" } })
   expect(four.cols).toBe(4)
   expect(four.CW).toBe(79)
   // a narrow window gives up panes rather than narrowing a pane below the measure: the measure does not fit at 60 or 40
-  expect(at(100, 40, { zen: true, zenCfg: { ...ZEN_DEFAULTS, flow: "columns", cols: 3 } }).cols).toBe(1)
-  expect(at(60, 40, { zen: true, zenCfg: { ...ZEN_DEFAULTS, flow: "columns", cols: 3 } }).cols).toBe(1)
-  expect(at(40, 40, { zen: true, zenCfg: { ...ZEN_DEFAULTS, flow: "columns", cols: 3 } }).cols).toBe(1)
+  expect(at(100, 40, { zen: true, zenCfg: { ...ZEN_DEFAULTS, flow: "columns" } }).cols).toBe(1)
+  expect(at(60, 40, { zen: true, zenCfg: { ...ZEN_DEFAULTS, flow: "columns" } }).cols).toBe(1)
+  expect(at(40, 40, { zen: true, zenCfg: { ...ZEN_DEFAULTS, flow: "columns" } }).cols).toBe(1)
   // the count changes at the measure, not before: 156 columns holds one pane at 72, 157 holds two
-  expect(at(156, 40, { zen: true, zenCfg: { ...ZEN_DEFAULTS, flow: "columns", cols: 2 } })).toMatchObject({
+  expect(at(156, 40, { zen: true, zenCfg: { ...ZEN_DEFAULTS, flow: "columns" } })).toMatchObject({
     cols: 1,
-    CW: 72,
+    CW: 150,
   })
-  expect(at(157, 40, { zen: true, zenCfg: { ...ZEN_DEFAULTS, flow: "columns", cols: 2 } })).toMatchObject({
+  expect(at(157, 40, { zen: true, zenCfg: { ...ZEN_DEFAULTS, flow: "columns" } })).toMatchObject({
     cols: 2,
     CW: 72,
   })
@@ -121,7 +121,7 @@ test("columns flow: panes side by side, at least the measure each, filled out to
   expect(at(200, 50, { zen: true }).cols).toBe(1)
   // a pane is never narrower than the measure while the width leaves room for it, and the band fills the area
   for (const W of [100, 130, 157, 200, 240, 300, 340, 420]) {
-    const l = at(W, 50, { zen: true, zenCfg: { ...ZEN_DEFAULTS, flow: "columns", cols: 4 } })
+    const l = at(W, 50, { zen: true, zenCfg: { ...ZEN_DEFAULTS, flow: "columns" } })
     expect(l.CW).toBeGreaterThanOrEqual(Math.min(Number(ZEN_DEFAULTS.measure), l.areaW - 4))
     expect(l.cols * (l.CW + 2) + (l.cols - 1) * 3).toBeLessThanOrEqual(l.areaW)
     // a lone pane is the measure, centred: it never stretches to fill
@@ -132,11 +132,11 @@ test("columns flow: panes side by side, at least the measure each, filled out to
   }
 })
 
-test("columns flow with `measure: full` keeps the old even share", () => {
-  // no minimum to respect, so three panes split the area's spare columns exactly as before
-  expect(at(200, 50, { zen: true, zenCfg: { ...ZEN_DEFAULTS, flow: "columns", cols: 3, measure: "full" } })).toMatchObject({
-    cols: 3,
-    CW: 60,
+test("columns flow with `measure: full` is the one wide column", () => {
+  // no minimum to respect, so there is no count to infer: full means the whole area in one pane
+  expect(at(200, 50, { zen: true, zenCfg: { ...ZEN_DEFAULTS, flow: "columns", measure: "full" } })).toMatchObject({
+    cols: 1,
+    CW: 194,
   })
 })
 

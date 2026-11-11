@@ -30,7 +30,6 @@ describe("normalizeZen", () => {
       prompter: false,
       wpm: 220,
       measure: 72,
-      cols: 2,
     })
   })
   for (const bad of [null, 5, "x", [1], true]) {
@@ -45,18 +44,15 @@ describe("normalizeZen", () => {
     })
   })
   test("rounds and clamps numbers", () => {
-    expect(normalizeZen({ wpm: 9999, measure: 10 })).toMatchObject({ wpm: 400, measure: 60 })
+    expect(normalizeZen({ wpm: 9999, measure: 10 })).toMatchObject({ wpm: 400, measure: 40 })
     expect(normalizeZen({ wpm: 50, measure: 500 })).toMatchObject({ wpm: 120, measure: 100 })
     expect(normalizeZen({ wpm: 221.6, measure: 72.4 })).toMatchObject({ wpm: 222, measure: 72 })
     expect(normalizeZen({ wpm: NaN, measure: Infinity })).toMatchObject({ wpm: 220, measure: 72 })
   })
   test("an unknown flow falls back to scroll", () => expect(normalizeZen({ flow: "spiral" }).flow).toBe("scroll"))
-  test("columns is a flow, and the pane count is clamped", () => {
+  test("columns is a flow; the pane count is not a setting", () => {
     expect(normalizeZen({ flow: "columns" }).flow).toBe("columns")
-    expect(normalizeZen({ cols: 3 }).cols).toBe(3)
-    expect(normalizeZen({ cols: 9 }).cols).toBe(4)
-    expect(normalizeZen({ cols: 0 }).cols).toBe(1)
-    expect(normalizeZen({ cols: 2.6 }).cols).toBe(3)
+    expect("cols" in normalizeZen({ flow: "columns" })).toBe(false)
   })
 })
 
@@ -79,7 +75,6 @@ describe("settings rows", () => {
       "on",
       "off · ◀ 220 wpm ▶",
       "◀ 72 ▶",
-      "◀ 2 ▶",
     ])
     expect(zenRows(ZEN_DEFAULTS).map((r) => r.label)).toEqual([
       "Flow",
@@ -88,18 +83,17 @@ describe("settings rows", () => {
       "Ghost chrome",
       "Teleprompter",
       "Measure",
-      "Columns",
     ])
   })
   test("pages greys out the scroll-only aids", () => {
     const rows = zenRows({ ...ZEN_DEFAULTS, flow: "pages" })
-    expect(rows.filter((r) => r.disabled).map((r) => r.id)).toEqual(["spotlight", "typewriter", "prompter", "cols"])
+    expect(rows.filter((r) => r.disabled).map((r) => r.id)).toEqual(["spotlight", "typewriter", "prompter"])
     expect(rows[0]!.value).toBe("◀ pages ▶")
   })
-  test("columns greys out the scroll-only aids and wakes the pane dial", () => {
+  test("columns greys out the scroll-only aids and has no pane dial", () => {
     const rows = zenRows({ ...ZEN_DEFAULTS, flow: "columns" })
     expect(rows.filter((r) => r.disabled).map((r) => r.id)).toEqual(["spotlight", "typewriter", "prompter"])
-    expect(rows.find((r) => r.id === "cols")!.value).toBe("◀ 2 ▶")
+    expect(rows.map((r) => r.id)).not.toContain("cols")
   })
   test("space toggles, arrows adjust", () => {
     const c = ZEN_DEFAULTS
@@ -108,10 +102,6 @@ describe("settings rows", () => {
     // the dial walks scroll → pages → columns → scroll
     expect(zenAdjust({ ...c, flow: "pages" }, "flow", 0).flow).toBe("columns")
     expect(zenAdjust({ ...c, flow: "columns" }, "flow", 0).flow).toBe("scroll")
-    expect(zenAdjust(c, "cols", 0)).toEqual(c)
-    expect(zenAdjust(c, "cols", 1)).toEqual({ ...c, cols: 3 })
-    expect(zenAdjust({ ...c, cols: 4 }, "cols", 1).cols).toBe(4)
-    expect(zenAdjust({ ...c, cols: 1 }, "cols", -1).cols).toBe(1)
     expect(zenAdjust(c, "spotlight", 0).spotlight).toBe(false)
     expect(zenAdjust(c, "ghost", 1).ghost).toBe(false)
     expect(zenAdjust(c, "prompter", 0).prompter).toBe(true)
@@ -133,7 +123,7 @@ describe("settings rows", () => {
   })
   test("adjusting stops at the limits", () => {
     expect(zenAdjust({ ...ZEN_DEFAULTS, wpm: 400 }, "prompter", 1).wpm).toBe(400)
-    expect(zenAdjust({ ...ZEN_DEFAULTS, measure: 60 }, "measure", -1).measure).toBe(60)
+    expect(zenAdjust({ ...ZEN_DEFAULTS, measure: 40 }, "measure", -1).measure).toBe(40)
   })
 })
 

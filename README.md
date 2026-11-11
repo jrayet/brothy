@@ -82,7 +82,7 @@ starts zen and `q` quits.
 - Shows pictures (`![alt](img.png)`, `![[img.png]]`) in the note where the terminal draws images and as a row
   elsewhere; `⏎` views one larger. [Pictures](https://jackmort.github.io/brothy/usage/pictures/)
 - Reloads when the file changes on disk and numbers the sections that changed.
-- Leaves only the text in zen (`z`): scroll, pages or columns (2–4 panes side by side, `|`), spotlight, typewriter or teleprompter.
+- Leaves only the text in zen (`z`): scroll, pages or columns (as many panes side by side as the window holds), spotlight, typewriter or teleprompter.
   [Zen mode](https://jackmort.github.io/brothy/usage/zen-mode/)
 - Ships 42 themes in 22 families, picked on a board with a live sample (`t`).
   [Themes](https://jackmort.github.io/brothy/themes/theme-picker/)
