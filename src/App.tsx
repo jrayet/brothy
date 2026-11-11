@@ -186,7 +186,8 @@ export function App({
   const themeEl = themeOverlay(ctx, d, pickView, popups)
   const zenEl = zenOverlay(ctx, d, zen)
 
-  if (W < MIN_W || H < MIN_H) return tooSmallScreen(d, W, H)
+  const need = needWidth(d)
+  if (W < need || H < MIN_H) return tooSmallScreen(d, W, H, need)
   const parts: ScreenParts = {
     panelEl,
     docEl,
@@ -334,12 +335,21 @@ interface ScreenParts {
   zenEl: ReactNode
 }
 
+/**
+ * The narrowest terminal this screen can draw. Zen's columns flow refuses to squeeze a pane below
+ * the zen measure, so it needs the measure plus a 2-column margin each side and the pane's gutter.
+ */
+function needWidth(d: Derived): number {
+  const m = d.s.zenCfg.measure
+  return d.L.zen && d.s.zenCfg.flow === "columns" && m !== "full" ? Math.max(MIN_W, m + 6) : MIN_W
+}
+
 /** Below MIN_W × MIN_H: only the size it needs. */
-function tooSmallScreen({ s, t }: Derived, W: number, H: number) {
+function tooSmallScreen({ s, t }: Derived, W: number, H: number, need: number) {
   const paint = surface(t, s.transparent)
   return (
     <box style={{ width: W, height: H, backgroundColor: paint.main, alignItems: "center", justifyContent: "center" }}>
-      {tooSmall(W, H, `${MIN_W}×${MIN_H}`).map((l, i) => (
+      {tooSmall(W, H, `${need}×${MIN_H}`).map((l, i) => (
         <text key={i} wrapMode="none" fg={t.textMuted}>
           {l}
         </text>

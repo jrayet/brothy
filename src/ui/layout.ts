@@ -61,15 +61,18 @@ export function layout(W: number, H: number, s: LayoutState) {
   const areaW = W - 2 - (inline ? SW + 1 : 0)
   const plain = s.wide ? "full" : MEASURE
   const want = zen ? s.zenCfg.measure : plain
-  // zen's columns flow: panes side by side, each the measure wide, while that many still fit
+  // zen's columns flow: panes side by side, each at least the measure wide, as many as fit
   const avail = areaW - 4
-  const fits = (n: number) => Math.floor((avail - (n - 1) * COL_GAP) / n) - ZEN_GUTTER >= MIN_MEASURE
-  let cols = zen && s.zenCfg.flow === "columns" ? Math.min(s.zenCfg.cols, ZEN_COLS.max) : 1
+  const columnsFlow = zen && s.zenCfg.flow === "columns"
+  // a pane may never be narrower than the measure: a narrower one wraps lines the reader did not ask for
+  const minPane = columnsFlow && want !== "full" ? Math.max(MIN_MEASURE, want) : MIN_MEASURE
+  const fits = (n: number) => Math.floor((avail - (n - 1) * COL_GAP) / n) - ZEN_GUTTER >= minPane
+  let cols = columnsFlow ? Math.min(s.zenCfg.cols, ZEN_COLS.max) : 1
   while (cols > 1 && !fits(cols)) cols--
-  // one pane keeps the old measure exactly; several share the width, gutter and gaps included
+  // one pane keeps the measure; several share the width out, so the band fills the area
   const shared = Math.floor((avail - (cols - 1) * COL_GAP) / cols)
   const paneCap = Math.max(MIN_MEASURE, cols > 1 ? shared - ZEN_GUTTER : shared)
-  let CW = Math.max(MIN_MEASURE, Math.min(want === "full" ? avail : want, paneCap))
+  let CW = cols > 1 ? paneCap : Math.max(MIN_MEASURE, Math.min(want === "full" ? avail : want, paneCap))
   const band = cols * (CW + ZEN_GUTTER) + (cols - 1) * COL_GAP
   let padL = cols > 1 ? Math.max(0, Math.floor((areaW - band) / 2)) : Math.max(0, Math.floor((areaW - CW) / 2))
   // the minimap takes the last MINI_W columns (the right margin and padding): the text keeps its

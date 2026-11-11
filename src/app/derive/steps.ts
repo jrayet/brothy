@@ -42,7 +42,7 @@ export function noteView(s: UI, L: Layout, t: Theme, pic: ReturnType<typeof pict
   const src = file?.src ?? ""
   const fm = memo.fm(src)
   const picFiles = memo.picFiles(s.openPath, s.root, s.linkTree)
-  // a pane of a columns page is narrow: there maths keeps its own em instead of growing into the measure
+  // a columns page holds several panes side by side, so maths keeps its own em there instead of growing into the measure
   const picture = memo.picture(pic.mode, pic.cell.w, pic.cell.h, picFiles, L.cols > 1 ? 1 : MATHS_ZOOM_MAX)
   const doc = memo.doc(fm.body, L.CW, t, s.hl, s.linkTree, s.headingStyle, picture)
   const view = s.source ? memo.source(src, L.CW, t, s.linkTree) : doc

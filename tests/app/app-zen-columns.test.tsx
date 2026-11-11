@@ -4,7 +4,7 @@ import { writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { columnPages, paneBounds } from "../../src/app/derive/steps"
 import { solidPng } from "../helpers/png"
-import { imagesOf, keys, kittyTerminal, setResolution, useAppHarness, waitFor } from "./helpers"
+import { imagesOf, keys, kittyTerminal, setResolution, useAppHarness, waitFor, waitFrame } from "./helpers"
 
 const { tmp, mount, zenConfig } = useAppHarness()
 
@@ -14,7 +14,7 @@ const nums = (f: string) => [...f.matchAll(/\bitem (\d+)/g)].map((m) => Number(m
 
 test("a columns page lays the whole band out at once, panes side by side", async () => {
   zenConfig({ flow: "columns", cols: 2, measure: 60, typewriter: false })
-  const s = await mount(tmp({ "a.md": items(200) }), "a.md")
+  const s = await mount(tmp({ "a.md": items(200) }), "a.md", { size: { width: 133, height: 30 } })
   const shown = nums(await keys(s, "z"))
   // 26 rows a pane at this size: the first page carries lines 0..51, both panes at once
   expect(Math.min(...shown)).toBe(0)
@@ -23,7 +23,7 @@ test("a columns page lays the whole band out at once, panes side by side", async
 
 test("space turns the page below the band, not to the next section", async () => {
   zenConfig({ flow: "columns", cols: 2, measure: 60, typewriter: false })
-  const s = await mount(tmp({ "a.md": items(200) }), "a.md")
+  const s = await mount(tmp({ "a.md": items(200) }), "a.md", { size: { width: 133, height: 30 } })
   await keys(s, "z")
   const second = nums(await keys(s, "space"))
   expect(Math.min(...second)).toBe(52)
@@ -32,7 +32,7 @@ test("space turns the page below the band, not to the next section", async () =>
 
 test("`|` adds a pane and the page band grows with it", async () => {
   zenConfig({ flow: "scroll" })
-  const s = await mount(tmp({ "a.md": items(200) }), "a.md")
+  const s = await mount(tmp({ "a.md": items(200) }), "a.md", { size: { width: 234, height: 30 } })
   // two panes are the default, so one step asks for three: 78 lines a page at this size
   const shown = nums(await keys(s, "z", "|"))
   expect(Math.min(...shown)).toBe(0)
@@ -76,9 +76,9 @@ test("a picture that would cross the pane's last row opens the next pane whole",
   const note = `${Array.from({ length: 24 }, (_, i) => `- item ${i}`).join("\n")}\n\n![Plan](plan.png)\n`
   const root = tmp({ "a.md": note })
   writeFileSync(join(root, "plan.png"), solidPng(200, 100, [200, 100, 50, 255]))
-  const s = await mount(root, "a.md", { size: { width: 100, height: 30 }, fetch: undefined })
+  const s = await mount(root, "a.md", { size: { width: 133, height: 30 }, fetch: undefined })
   kittyTerminal(s)
-  setResolution(s, { width: 1000, height: 600 })
+  setResolution(s, { width: 1330, height: 600 })
   await keys(s, "z")
   await waitFor(s, () => imagesOf(s).length === 1)
   // five rows of ten by twenty pixels: whole in the second pane, not cut to the one row that was left
@@ -88,7 +88,7 @@ test("a picture that would cross the pane's last row opens the next pane whole",
 describe("a column is as tall as the body, and h / l walk the columns", () => {
   test("`l` turns to the next column, `h` comes back to it", async () => {
     zenConfig({ flow: "columns", cols: 2, measure: 60, typewriter: false })
-    const s = await mount(tmp({ "a.md": items(200) }), "a.md")
+    const s = await mount(tmp({ "a.md": items(200) }), "a.md", { size: { width: 133, height: 30 } })
     // 26 rows a pane: the first two columns hold 0..51, so the next column starts at item 26
     const at = nums(await keys(s, "z"))
     expect(Math.min(...at)).toBe(0)
@@ -102,7 +102,7 @@ describe("a column is as tall as the body, and h / l walk the columns", () => {
 
   test("scrolling moves a whole column, never half of one", async () => {
     zenConfig({ flow: "columns", cols: 2, measure: 60, typewriter: false })
-    const s = await mount(tmp({ "a.md": items(200) }), "a.md")
+    const s = await mount(tmp({ "a.md": items(200) }), "a.md", { size: { width: 133, height: 30 } })
     await keys(s, "z")
     const down = nums(await keys(s, "j"))
     expect(Math.min(...down)).toBe(26)
@@ -110,7 +110,7 @@ describe("a column is as tall as the body, and h / l walk the columns", () => {
 
   test("`G` lands on the last column, which the note ends in", async () => {
     zenConfig({ flow: "columns", cols: 2, measure: 60, typewriter: false })
-    const s = await mount(tmp({ "a.md": items(200) }), "a.md")
+    const s = await mount(tmp({ "a.md": items(200) }), "a.md", { size: { width: 133, height: 30 } })
     const last = nums(await keys(s, "z", "G"))
     // 200 items over 26-row columns: the last column starts at 182 and holds the rest
     expect(Math.max(...last)).toBe(199)
@@ -119,4 +119,22 @@ describe("a column is as tall as the body, and h / l walk the columns", () => {
     const again = nums(await keys(s, "l"))
     expect(Math.min(...again)).toBe(182)
   })
+})
+
+test("a window too narrow for one pane at the measure asks for the width it needs", async () => {
+  zenConfig({ flow: "columns", cols: 2, typewriter: false })
+  const s = await mount(tmp({ "a.md": items(200) }), "a.md", { size: { width: 60, height: 30 } })
+  await keys(s, "z")
+  // measure 72 + a 2-column margin each side: 78 columns is the narrowest this flow can draw
+  const frame = await waitFrame(s, (f) => f.includes("need 78×14"))
+  expect(frame).toContain("terminal too small (60×30)")
+  expect(nums(frame)).toEqual([])
+})
+
+test("one column at the measure appears as soon as the window can hold it", async () => {
+  zenConfig({ flow: "columns", cols: 2, typewriter: false })
+  const s = await mount(tmp({ "a.md": items(200) }), "a.md", { size: { width: 78, height: 30 } })
+  const shown = nums(await keys(s, "z"))
+  expect(Math.min(...shown)).toBe(0)
+  expect(Math.max(...shown)).toBe(25)
 })
