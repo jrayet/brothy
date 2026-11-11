@@ -27,14 +27,7 @@ export function reservedBlank(view: Rendered, n: number) {
 }
 
 /** Decode `p` for this cell, theme and background; once it lands draw it, or say once per note that it won't. */
-export function askPicture(
-  c: AppCtx,
-  d: Derived,
-  key: string,
-  file: string,
-  p: Pick<Pic, "cols" | "rows" | "alt">,
-  cell: Cell,
-) {
+function askPicture(c: AppCtx, d: Derived, key: string, file: string, p: Pic, cell: Cell) {
   const { ui, set, flash, alive, pics, picTold } = c
   const note = ui.current.openPath ?? ""
   const bg = d.s.transparent ? null : rgb(d.t.background)
