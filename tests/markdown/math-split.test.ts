@@ -174,6 +174,21 @@ describe("segment", () => {
     expect(squash(pieces.join(" "))).toBe(squash(GRADIENT_LIST))
   })
 
+  test("a blank candidate is never reported as a piece to typeset", () => {
+    // a spacing break leaves a candidate of nothing between two pieces; asking its width lands on no key, so naming it
+    // missing would stop the layout for ever. The two pieces past the break are typeset, the one before it is not.
+    const known = ["\\qquad P", "= f^{-1},", "= F^{T}F"]
+    const typeset = (s: string) => (known.includes(s) ? s.length * 20 : null)
+    const s = segment(GRADIENT_LIST, 40, typeset)
+    expect(s).toEqual({
+      pieces: [],
+      missing: ["v_s' = \\left(\\operatorname{grad} v_s\\right) v_s, \\qquad P = f^{-1},", "\\qquad X"],
+      breakable: true,
+    })
+    // and it has nothing blank to typeset
+    expect(s.missing.filter((piece) => piece.trim() === "" || BLANK.test(piece))).toEqual([])
+  })
+
   test("a width that is not known yet stops the call with the pieces to typeset", () => {
     // " c," has not been typeset yet: the call says so instead of guessing where " c," would end
     const unknown = new Set([" c,"])

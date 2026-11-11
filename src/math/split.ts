@@ -100,17 +100,20 @@ export function segment(source: string, fitsPx: number, width: Width): Segmented
   const out: string[] = []
   const missing: string[] = []
   /**
-   * Takes the piece `source.slice(begin, end)`, and says whether the formula could still go on: a width that is not
-   * known yet is noted, untouched. A piece that is only spacing is not a line and is left out, and one that is only a
-   * comma ends the piece before it instead of being a line of its own.
+   * Takes the piece `source.slice(begin, end)`, and says whether the formula could still go on. A piece that is only
+   * spacing is not a line: it is left out, and one that is only a comma ends the piece before it instead of being a
+   * line of its own. That is settled before the width is asked for, so what is noted as missing is always a piece the
+   * caller can typeset and no blank ever is.
    */
   const take = (begin: number, end: number) => {
     const latex = source.slice(begin, end).trimEnd()
-    const prev = out[out.length - 1]
     if (latex.trim() === "" || BLANK.test(latex)) {
+      const prev = out[out.length - 1]
       if (latex.includes(",") && prev !== undefined) out[out.length - 1] = prev + latex.trim()
-    } else out.push(latex)
-    if (fits(latex) === null) missing.push(latex)
+    } else {
+      out.push(latex)
+      if (fits(latex) === null) missing.push(latex)
+    }
     return out.length <= MAX_PIECES
   }
   // a formula that fits as it stands is never cut
