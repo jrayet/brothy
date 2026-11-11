@@ -84,3 +84,39 @@ test("a picture that would cross the pane's last row opens the next pane whole",
   // five rows of ten by twenty pixels: whole in the second pane, not cut to the one row that was left
   expect([imagesOf(s)[0]!.width, imagesOf(s)[0]!.height]).toEqual([20, 5])
 })
+
+describe("a column is as tall as the body, and h / l walk the columns", () => {
+  test("`l` turns to the next column, `h` comes back to it", async () => {
+    zenConfig({ flow: "columns", cols: 2, measure: 60, typewriter: false })
+    const s = await mount(tmp({ "a.md": items(200) }), "a.md")
+    // 26 rows a pane: the first two columns hold 0..51, so the next column starts at item 26
+    const at = nums(await keys(s, "z"))
+    expect(Math.min(...at)).toBe(0)
+    const right = nums(await keys(s, "l"))
+    expect(Math.min(...right)).toBe(26)
+    expect(Math.max(...right)).toBe(77)
+    const back = nums(await keys(s, "h"))
+    expect(Math.min(...back)).toBe(0)
+    expect(Math.max(...back)).toBe(51)
+  })
+
+  test("scrolling moves a whole column, never half of one", async () => {
+    zenConfig({ flow: "columns", cols: 2, measure: 60, typewriter: false })
+    const s = await mount(tmp({ "a.md": items(200) }), "a.md")
+    await keys(s, "z")
+    const down = nums(await keys(s, "j"))
+    expect(Math.min(...down)).toBe(26)
+  })
+
+  test("`G` lands on the last column, which the note ends in", async () => {
+    zenConfig({ flow: "columns", cols: 2, measure: 60, typewriter: false })
+    const s = await mount(tmp({ "a.md": items(200) }), "a.md")
+    const last = nums(await keys(s, "z", "G"))
+    // 200 items over 26-row columns: the last column starts at 182 and holds the rest
+    expect(Math.max(...last)).toBe(199)
+    expect(Math.min(...last)).toBe(182)
+    // and `l` there has nowhere to go
+    const again = nums(await keys(s, "l"))
+    expect(Math.min(...again)).toBe(182)
+  })
+})

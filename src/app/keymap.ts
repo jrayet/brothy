@@ -271,6 +271,13 @@ const KEYMAP = {
   },
   zenMeasure: { modes: ["zen"], keys: ["<", ">"], label: "< >", desc: "narrower / wider text (saved)" },
   zenCols: { modes: ["zen"], keys: ["|"], label: "|", desc: "columns: 1 · 2 · 3 · 4 side by side (saved)" },
+  zenColumn: {
+    modes: ["zen"],
+    keys: ["h", "left", "l", "right"],
+    label: "h l",
+    desc: "one column left / right (columns flow)",
+    hint: "column",
+  },
   zenSpeed: { modes: ["zen"], keys: ["+", "-"], label: "+ -", desc: "teleprompter faster / slower (saved)" },
   zenGloss: {
     modes: ["zen"],
@@ -548,7 +555,7 @@ export const FOOTERS: Record<Ctx, Hint[]> = {
   "panel:outline": ["outlineMove", "outlineJump", "outlinePeek", ["slash", "filter"], ["focus", "document"], "help"],
   "panel:info": ["infoMove", "infoOpen", "summarize", "explainChange", ["focus", "document"], "help"],
   filter: ["filterType", "filterMove", "filterOpen", "filterClear"],
-  zen: ["zenLine", "zenSection", "zenGloss", "zenSettings", ["zen", "leave"], "help"],
+  zen: ["zenLine", "zenColumn", "zenSection", "zenGloss", "zenSettings", ["zen", "leave"], "help"],
   help: ["helpScroll", "helpClose"],
   prompt: ["promptMove", "promptApply", "promptClear"],
   theme: ["themeType", "themeMove", "themeMode", "themeApply", "themeClose"],

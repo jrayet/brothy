@@ -5,6 +5,7 @@ import { clamp } from "../lib/text"
 import { GHOST_HOLD } from "../ui/status"
 import { normalizeZen, prompterRate, ZEN_ROWS, type ZenConfig, zenAdjust } from "../ui/zen"
 import type { AIJobs } from "./ai-jobs"
+import { columnStarts } from "./derive/steps"
 import type { AppCtx } from "./ctx"
 import type { Focus } from "./store"
 
@@ -39,15 +40,41 @@ function makeZenMotion(c: AppCtx) {
     setTop(ranges[clamp(i, 0, ranges.length - 1)]![0])
   }
 
-  /** Manual scroll inside zen; a page only scrolls within its own section. */
+  /**
+   * Columns flow: one column left or right. Columns are as tall as the body and run left to right, so there is no
+   * half-column to stop at: `top` only ever sits on a column's first line.
+   */
+  const goColumn = (dir: 1 | -1) => {
+    stopRolling()
+    const { view, top, L } = derive()
+    const starts = columnStarts(view, L.CH)
+    const last = starts.length > 1 ? starts[starts.length - 2]! : 0
+    const to =
+      dir > 0 ? (starts.find((x) => x > top) ?? last) : ([...starts].reverse().find((x) => x < top) ?? 0)
+    setTop(clamp(to, 0, last))
+  }
+
+  /** Columns flow: put the top back on the column that holds it, after a jump that landed mid-column. */
+  const snapColumn = () => {
+    const { view, top, L } = derive()
+    let at = 0
+    for (const st of columnStarts(view, L.CH)) if (st <= top) at = st
+    setTop(at)
+  }
+
+  /** Manual scroll inside zen; a page only scrolls within its own section, columns by whole columns. */
   const zenScroll = (n: number) => {
     stopRolling()
-    const { pg } = derive()
+    const { pg, L } = derive()
+    if (L.zen && ui.current.zenCfg.flow === "columns") {
+      if (n) goColumn(n > 0 ? 1 : -1)
+      return
+    }
     if (pg) return setTop(Math.max(pg.start, Math.min(pg.top + n, pg.maxTop)))
     scrollBy(n)
   }
 
-  return { startRolling, goPage, zenScroll }
+  return { startRolling, goPage, goColumn, snapColumn, zenScroll }
 }
 
 /** The `Z` settings popup. */

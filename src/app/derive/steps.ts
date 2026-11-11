@@ -428,7 +428,12 @@ export function scrollState(
   const pages = L.zen && s.zenCfg.flow === "pages"
   /** the rows one screen shows: columns read left to right, so a screen is `cols` panes of CH rows */
   const screenRows = L.CH * Math.max(1, L.cols)
-  const maxTop = tw || pages ? Math.max(0, view.lines.length - 1) : Math.max(0, view.lines.length - screenRows + room)
+  // columns: the last column is a body high, so the band walks down to `lines - CH` and no further
+  const columns = L.zen && s.zenCfg.flow === "columns"
+  const maxTop =
+    tw || pages
+      ? Math.max(0, view.lines.length - 1)
+      : Math.max(0, columns ? lastColumnStart(view, L.CH) : view.lines.length - screenRows + room)
   const entry = scrolls.get(scrollKey)
   if (entry && entry.geo !== geo) {
     // re-laid out (resize, reload): keep the reading position
@@ -539,16 +544,29 @@ export function paneBounds(view: Rendered, top: number, rows: number, cols: numb
   return out
 }
 
-/** The first line of every page of the columns flow: a page is whatever the panes hold, pictures kept whole. */
-export function columnPages(view: Rendered, rows: number, cols: number): number[] {
+/** Every column start of the columns flow in order, the line past the last column at the end: the band is read one column at a time. */
+export function columnStarts(view: Rendered, rows: number): number[] {
   const n = view.lines.length
-  const out: number[] = []
-  let top = 0
-  while (top < n && out.length < 10000) {
-    out.push(top)
-    const end = paneBounds(view, top, rows, cols)[cols]!
-    top = end > top ? end : Math.min(top + rows, n)
+  const out = [0]
+  while (out[out.length - 1]! < n && out.length < 10000) {
+    const at = out[out.length - 1]!
+    const end = paneEnd(view, at, rows)
+    out.push(end > at ? end : Math.min(at + rows, n))
   }
+  return out
+}
+
+/** The first line of the last column: the lowest a columns band may start, so no column is ever half cut. */
+export function lastColumnStart(view: Rendered, rows: number): number {
+  const starts = columnStarts(view, rows)
+  return starts.length > 1 ? starts[starts.length - 2]! : 0
+}
+
+/** The first line of every page of the columns flow: a page is whatever `cols` panes hold, pictures kept whole. */
+export function columnPages(view: Rendered, rows: number, cols: number): number[] {
+  const starts = columnStarts(view, rows)
+  const out: number[] = []
+  for (let i = 0; i < starts.length - 1; i += cols) out.push(starts[i]!)
   return out.length ? out : [0]
 }
 
@@ -575,6 +593,8 @@ export function readingWindow(
     // and the next page carries on below the last pane, whatever the sections are
     const panes = paneBounds(view, top, L.CH, Math.max(1, L.cols))
     const pages = columnPages(view, L.CH, Math.max(1, L.cols))
+    // the last column is the last place the band can start: a column is as tall as the body, never taller
+    const lastColumn = lastColumnStart(view, L.CH)
     let index = 0
     while (index + 1 < pages.length && pages[index + 1]! <= top) index++
     pg = {
@@ -583,7 +603,7 @@ export function readingWindow(
       start: 0,
       end: view.lines.length,
       top,
-      maxTop: Math.max(0, view.lines.length - screenRows),
+      maxTop: Math.max(0, lastColumn),
     }
     return { ranges, spot, win, pg, prompter: false, panes, pages }
   }

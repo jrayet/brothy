@@ -68,10 +68,16 @@ export function makeDocActions(
 /** Zen: scrolling (pages flip, space rolls the teleprompter), sections, measure, speed and the gloss. */
 export function makeZenActions(c: AppCtx, { aiJobs, zen }: Features, { jumpHeading }: Moves) {
   const { ui, derive, flash, setTop, stopRolling } = c
-  const { startRolling, setZen, goPage, zenScroll } = zen
+  const { startRolling, setZen, goPage, goColumn, snapColumn, zenScroll } = zen
+  /** Columns flow reads left to right in columns as tall as the body: there, every way down the text moves one column. */
+  const inColumns = () => ui.current.zenCfg.flow === "columns"
   return {
     zenLine: (k) => zenScroll(isDown(k) ? 1 : -1),
     zenHalf: (k) => zenScroll((isDown(k) ? 1 : -1) * Math.max(1, Math.floor(derive().L.CH / 2))),
+    zenColumn: (k) => {
+      if (!inColumns()) return
+      goColumn(k.name === "h" || k.name === "left" || k.sequence === "h" ? -1 : 1)
+    },
     zenPage: (k) => {
       const { pg, L, prompter } = derive()
       if (k.name === "space" && prompter) return ui.current.rolling ? stopRolling() : startRolling()
@@ -90,7 +96,10 @@ export function makeZenActions(c: AppCtx, { aiJobs, zen }: Features, { jumpHeadi
     zenEnds: (k) => {
       stopRolling()
       const toTop = (k.name === "g" && !k.shift) || k.name === "home"
-      if (derive().pg) return goPage(toTop ? 0 : Infinity)
+      const { pg } = derive()
+      // columns: the end of the note is the last column, not the last whole band
+      if (pg && inColumns()) return setTop(toTop ? 0 : pg.maxTop)
+      if (pg) return goPage(toTop ? 0 : Infinity)
       setTop(toTop ? 0 : derive().maxTop)
     },
     zenGloss: aiJobs.zenGloss,
@@ -100,8 +109,10 @@ export function makeZenActions(c: AppCtx, { aiJobs, zen }: Features, { jumpHeadi
       const dir = k.sequence === "]" || k.sequence === "}" ? 1 : -1
       const { pg } = derive()
       // in columns, paging is the space bar's job: the section keys stay on the sections
-      if (pg && ui.current.zenCfg.flow !== "columns") goPage(pg.index + dir)
-      else jumpHeading(dir)
+      if (pg && ui.current.zenCfg.flow !== "columns") return goPage(pg.index + dir)
+      jumpHeading(dir)
+      // a heading sits wherever it sits: the band starts on the column that holds it
+      if (inColumns()) snapColumn()
     },
     zenCols: () => {
       // past the last pane the dial comes back to one, which is the scroll flow again
