@@ -5,8 +5,8 @@ import { clamp } from "../lib/text"
 import { GHOST_HOLD } from "../ui/status"
 import { normalizeZen, prompterRate, ZEN_ROWS, type ZenConfig, zenAdjust } from "../ui/zen"
 import type { AIJobs } from "./ai-jobs"
-import { columnStarts } from "./derive/steps"
 import type { AppCtx } from "./ctx"
+import { columnStarts } from "./derive/steps"
 import type { Focus } from "./store"
 
 /** The teleprompter and the ways to move through the text in zen: pages and manual scrolling. */
@@ -49,8 +49,7 @@ function makeZenMotion(c: AppCtx) {
     const { view, top, L } = derive()
     const starts = columnStarts(view, L.CH)
     const last = starts.length > 1 ? starts[starts.length - 2]! : 0
-    const to =
-      dir > 0 ? (starts.find((x) => x > top) ?? last) : ([...starts].reverse().find((x) => x < top) ?? 0)
+    const to = dir > 0 ? (starts.find((x) => x > top) ?? last) : ([...starts].reverse().find((x) => x < top) ?? 0)
     setTop(clamp(to, 0, last))
   }
 

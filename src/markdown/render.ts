@@ -4,9 +4,9 @@
 // inline spans, callouts, blocks and tables; the lexer, front matter, Source view and stats have their own modules.
 
 import type { Token, Tokens } from "marked"
+import { renderLatex } from "opentui-math"
 import { A, type Span, safe, safeLine } from "../lib/spans"
 import { truncate as clip, graphemes, pushSpan, spanWidth, width, wrap } from "../lib/text"
-import { renderLatex } from "opentui-math"
 import { isMathLang, MATH_REF_EM, type MathRequest, mathRequest } from "../math/latex"
 import { isMarkdown } from "../notes/files"
 import { isImagePath, isRemoteImage, parseImageSize, QUERY_OR_ANCHOR } from "../notes/images"
