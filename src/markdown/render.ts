@@ -634,7 +634,9 @@ export function picBox(
 }
 
 /** How many ems a maths block's reference raster is shown at: MathJax's size is a formula's own em, not a cell's. */
-export const MATHS_EM_CELLS = 1.2
+export const MATHS_EM_CELLS = 0.85
+/** The tallest a formula may be drawn, in rows: a block is a picture in the text, not a poster over the page. */
+export const MATHS_MAX_ROWS = 8
 /** Past this much upscaling a formula would be wider than the measure anyway: the box caps it and the raster keeps the aspect. */
 export const MATHS_ZOOM_MAX = 1.6
 
@@ -648,12 +650,17 @@ export function mathBox(
   measure: number,
   cell: { w: number; h: number },
   zoomMax = MATHS_ZOOM_MAX,
+  maxRows = MATHS_MAX_ROWS,
 ): { cols: number; rows: number } {
   const scale = (MATHS_EM_CELLS * cell.h) / MATH_REF_EM
   const natural = { w: Math.max(1, size.w * scale), h: Math.max(1, size.h * scale) }
   const base = picBox(natural, null, measure, cell)
   const zoom = Math.min(zoomMax, Math.max(1, measure / base.cols))
-  return zoom > 1 ? picBox({ w: natural.w * zoom, h: natural.h * zoom }, null, measure, cell) : base
+  const out = zoom > 1 ? picBox({ w: natural.w * zoom, h: natural.h * zoom }, null, measure, cell) : base
+  if (out.rows <= maxRows) return out
+  // a formula taller than the cap is drawn smaller still, never cropped: the aspect is kept and only the size drops
+  const fit = (maxRows * cell.h) / natural.h
+  return picBox({ w: natural.w * fit, h: maxRows * cell.h }, null, measure, cell)
 }
 
 interface SoleImage {
@@ -747,9 +754,19 @@ function pictureBlock(ctx: Ctx, img: SoleImage, f: BlockFrame): boolean {
   return true
 }
 
+/** `$$…$$` alone on its line: the LaTeX inside, else null (a lone `$`, or two formulas in one paragraph, stay text). */
+function displayMath(raw?: string): string | null {
+  const text = raw?.trim()
+  if (!text || !text.startsWith("$$") || !text.endsWith("$$") || text.length < 5) return null
+  const inner = text.slice(2, -2)
+  return inner.includes("$") ? null : inner.trim() || null
+}
+
 function paragraphBlock(ctx: Ctx, tok: Token, f: BlockFrame) {
   // a "text" block is a tight list item's body: no blank row after it
   const p = tokenOf(tok, "paragraph", "text")
+  const dm = displayMath(p.raw)
+  if (dm && mathBlock(ctx, dm, f)) return tok.type === "paragraph" ? spacer(ctx, f.rest) : undefined
   const img = soleImage(p.tokens ?? [])
   if (img && pictureBlock(ctx, img, f)) return tok.type === "paragraph" ? spacer(ctx, f.rest) : undefined
   emitRows(ctx, wrap(inline(p.tokens, ctx.t, undefined, ctx.sink), f.max, f.pre(), f.rest))

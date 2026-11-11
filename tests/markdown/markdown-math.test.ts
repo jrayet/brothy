@@ -53,25 +53,45 @@ describe("latex fences", () => {
     // the viewer fits pic.size into its body, so the block must carry the typeset size or it draws nothing
     expect(pic.size).toEqual(mathInfo(req.key)!)
     // the box is maths-specific (its own em, zoomed to the measure), not the picture one: 291×94 at measure 80
-    expect([pic.cols, pic.rows]).toEqual([28, 5])
+    expect([pic.cols, pic.rows]).toEqual([20, 3])
     const reserved = second.lines.filter((l) => l.pic === pic.id)
     expect(reserved.length).toBe(pic.rows)
   })
 
   test("mathBox: the reference em at a cell's height, zoomed to the measure, capped", () => {
-    // 291×94: 291 · 1.2 · 20/40 = 174 px = 18 columns of base box, zoomed by the measure but capped at 1.6
-    expect(mathBox({ w: 291, h: 94 }, 80, cell)).toEqual({ cols: 28, rows: 5 })
-    // the taller derivation: 429×226
-    expect(mathBox({ w: 429, h: 226 }, 80, cell)).toEqual({ cols: 42, rows: 11 })
-    // a small formula stays small: its base box is already 2 columns, capped zoom has nothing to add
-    expect(mathBox({ w: 40, h: 40 }, 80, cell)).toEqual({ cols: 4, rows: 2 })
-    // a long thin one zooms to the cap: 600×10 → 36 columns of base box, 1.6 · 36 = 58
-    expect(mathBox({ w: 600, h: 10 }, 80, cell)).toEqual({ cols: 58, rows: 1 })
+    // 291×94: 291 · 0.85 · 20/40 = 124 px = 13 columns of base box, zoomed by the measure but capped at 1.6
+    expect(mathBox({ w: 291, h: 94 }, 80, cell)).toEqual({ cols: 20, rows: 3 })
+    // the taller derivation: 429×226 would be 11 rows at the cap's edge, so 8 is as tall as it gets
+    expect(mathBox({ w: 429, h: 226 }, 80, cell)).toEqual({ cols: 30, rows: 8 })
+    // a small formula stays small: its base box is already 3 columns, capped zoom has nothing to add
+    expect(mathBox({ w: 40, h: 40 }, 80, cell)).toEqual({ cols: 3, rows: 2 })
+    // a long thin one zooms to the cap: 600×10 → 6 columns of base box, 1.6 · 26 = 41
+    expect(mathBox({ w: 600, h: 10 }, 80, cell)).toEqual({ cols: 41, rows: 1 })
     // a narrow measure leaves no zoom at all: the base box is already wider than it
-    expect(mathBox({ w: 40, h: 40 }, 5, cell)).toEqual({ cols: 4, rows: 2 })
+    expect(mathBox({ w: 40, h: 40 }, 5, cell)).toEqual({ cols: 3, rows: 2 })
     // a pane of a columns page passes zoomMax 1: the formula keeps its em instead of growing into the pane
-    expect(mathBox({ w: 291, h: 94 }, 80, cell, 1)).toEqual({ cols: 18, rows: 3 })
-    expect(mathBox({ w: 429, h: 226 }, 80, cell, 1)).toEqual({ cols: 26, rows: 7 })
+    expect(mathBox({ w: 291, h: 94 }, 80, cell, 1)).toEqual({ cols: 13, rows: 2 })
+    expect(mathBox({ w: 429, h: 226 }, 80, cell, 1)).toEqual({ cols: 19, rows: 5 })
+    // a poster-sized raster is drawn down to the row cap, never past it
+    expect(mathBox({ w: 2166, h: 798 }, 60, cell, 1).rows).toBe(8)
+  })
+
+  test("a whole-line $$…$$ is display maths: its own picture, at the same small size as a fence", async () => {
+    const source = "\\begin{pmatrix} a & b \\\\ c & d \\end{pmatrix}"
+    const req = mathRequest(source, t.text)
+    await ensureMath([req])
+    const r = render(`$$${source}$$\n`, 80, t, pix)
+    expect(r.pics?.length).toBe(1)
+    const pic = r.pics![0]!
+    expect(pic.src).toBe(req.key)
+    expect(pic.rows).toBeGreaterThanOrEqual(1)
+    expect(pic.rows).toBeLessThanOrEqual(8)
+    expect(r.lines.filter((l) => l.pic === pic.id).length).toBe(pic.rows)
+  })
+
+  test("dollars inside a sentence are not display maths", async () => {
+    const r = render("The estimate $$x$$ and $$y$$ hold together.\n", 80, t, pix)
+    expect(r.pics ?? []).toEqual([])
   })
 
   test("a second pass over the same source asks for nothing", async () => {
