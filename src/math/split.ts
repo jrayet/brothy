@@ -2,7 +2,10 @@
 // and every width comes from a callback, so the caller typesets (MathJax widths come from elsewhere) and lays out
 // again. Nothing here typesets, measures or caches anything.
 
-/** One place a formula may be cut: the index just after the delimiter, and its kind. */
+/**
+ * One place a formula may be cut and the kind of delimiter that puts it there. A comma or a spacing command is cut
+ * after itself, an equality or a relation before itself: a piece never starts with a comma and never ends with a `=`.
+ */
 export type BreakKind = "," | "qquad" | "=" | "rel"
 export interface Break {
   at: number
@@ -13,7 +16,10 @@ export interface Break {
 export type Width = (latex: string) => number | null
 
 export interface Segmented {
-  /** The pieces to draw, in reading order; joining them with "" gives back `source` apart from trimmed whitespace. */
+  /**
+   * The pieces to draw, in reading order. None is empty or only spacing, and joining them with " " gives back `source`
+   * apart from runs of whitespace.
+   */
   pieces: string[]
   /** Pieces whose width is not known yet: the caller must typeset these and lay out again. */
   missing: string[]
@@ -28,11 +34,14 @@ const MAX_PIECES = 64
 /** Where a formula is cut, the finest break first: a comma, a space, an equality, a relation. */
 const KINDS: readonly BreakKind[] = [",", "qquad", "=", "rel"]
 
-/** The spaces a break may follow, by the name `commandAt` reads (`\;` has the name ";" and `\,` ","). */
+/** The spaces a break goes after, by the name `commandAt` reads (`\;` has the name ";" and `\,` ","). */
 const SPACES: Record<string, true> = { qquad: true, quad: true, ";": true, ",": true }
 
-/** The relations a break may follow, whole names, so `\leftarrow` never reads as `\left`. */
+/** The relations a break goes before, whole names, so `\leftarrow` never reads as `\left`. */
 const RELATIONS = new Set(["?", "iff", "Leftrightarrow", "Rightarrow", "Leftarrow", "leftarrow", "to", "rightarrow"])
+
+/** A piece that is nothing but spacing or a lone comma: no line of a formula is ever just that. */
+const BLANK = /^(?:\\?(?:qquad|quad|,|;|:|!)|\s|~)+$/
 
 /** Brackets that group with no command to say so: a comma in `f(x,y)` or `(a, b)` is not a break. */
 const BRACKETS: Record<string, string> = { "(": ")", "[": "]", "{": "}" }
@@ -60,7 +69,9 @@ const ATOMIC: Record<string, number> = {
 /**
  * Top-level cut points of `source`, left to right: never inside braces, \left…\right, \begin…\end, \text{…}.
  *
- * `at` means "cut here", so the delimiter (and the space after it) stays with the piece on its left.
+ * `at` means "cut here". A comma and a spacing command are cut after themselves, so they end the piece on their left;
+ * an equality and a relation are cut before themselves, `at` being the index of their first character, so they open the
+ * piece on their right.
  */
 export function breakPoints(source: string): Break[] {
   const found: Break[] = []
@@ -88,9 +99,17 @@ export function segment(source: string, fitsPx: number, width: Width): Segmented
 
   const out: string[] = []
   const missing: string[] = []
-  /** Takes a piece, and says whether the formula could still go on: a width that is not known yet is noted, untouched. */
-  const take = (latex: string) => {
-    out.push(latex)
+  /**
+   * Takes the piece `source.slice(begin, end)`, and says whether the formula could still go on: a width that is not
+   * known yet is noted, untouched. A piece that is only spacing is not a line and is left out, and one that is only a
+   * comma ends the piece before it instead of being a line of its own.
+   */
+  const take = (begin: number, end: number) => {
+    const latex = source.slice(begin, end).trimEnd()
+    const prev = out[out.length - 1]
+    if (latex.trim() === "" || BLANK.test(latex)) {
+      if (latex.includes(",") && prev !== undefined) out[out.length - 1] = prev + latex.trim()
+    } else out.push(latex)
     if (fits(latex) === null) missing.push(latex)
     return out.length <= MAX_PIECES
   }
@@ -106,11 +125,14 @@ const one = (source: string): Segmented => ({ pieces: [source], missing: [], bre
 
 /**
  * Cuts the formula from `begin` on: a break of the preferred kind first (`KINDS[kind]`, finest first), the next
- * kind down only when that one cannot help. `take` appends a piece and says whether there may be more.
+ * kind down only when that one cannot help. `take` appends the piece from `begin` to a break and says whether there may
+ * be more.
  *
  * `rest` holds the breaks of the piece still to be cut. A piece is the last of that kind whose piece still fits —
- * commas first, so a list is cut at its commas and only cut at a relation when a comma will not do. When no kind fits
- * even one break, the chunk up to the first break there is becomes a piece and is drawn smaller.
+ * commas first, so a list is cut at its commas and only cut at a relation when a comma will not do. An equality or a
+ * relation is cut before itself, so the piece it opens starts with it and the space before it is dropped with the end of
+ * the piece it left. When no kind fits even one break, the chunk up to the first break there is becomes a piece and is
+ * drawn smaller.
  */
 function lay(
   source: string,
@@ -118,13 +140,13 @@ function lay(
   rest: readonly Break[],
   kind: number,
   fits: (latex: string) => boolean | null,
-  take: (latex: string) => boolean,
+  take: (begin: number, end: number) => boolean,
 ): boolean {
   if (kind >= KINDS.length) {
     // nothing fits even at the last kind: cut at the first break there is, if any, or draw the rest as one piece
     const first = rest.find((b) => b.at > begin)
-    if (!first) return take(source.slice(begin))
-    if (!take(source.slice(begin, first.at))) return false
+    if (!first) return take(begin, source.length)
+    if (!take(begin, first.at)) return false
     return lay(source, first.at, after(rest, first.at), 0, fits, take)
   }
   const line = rest.filter((b) => b.kind === KINDS[kind])
@@ -136,14 +158,14 @@ function lay(
     stop = b.at
   }
   if (stop >= 0) {
-    if (!take(source.slice(begin, stop))) return false
+    if (!take(begin, stop)) return false
     // the next piece starts over at the preferred kind
     return lay(source, stop, after(rest, stop), 0, fits, take)
   }
   return lay(source, begin, rest, kind + 1, fits, take)
 }
 
-/** The breaks after `at`, where the piece still to be cut begins. */
+/** The breaks from `at` on, where the piece still to be cut begins. */
 const after = (rest: readonly Break[], at: number) => rest.filter((b) => b.at > at)
 
 /** The width callback, asked once per distinct piece: the same inputs always ask the same questions. */
@@ -213,7 +235,7 @@ function scan(source: string, i: number, report: (at: number, kind: BreakKind) =
       continue
     }
     if (ch === "=" && open.length === 0 && !command && source[at - 1] !== "=" && source[at + 1] !== "=") {
-      report(at + 1, "=")
+      report(at, "=")
       at++
       continue
     }
