@@ -5,7 +5,7 @@
 
 import type { Token, Tokens } from "marked"
 import { A, type Span, safe, safeLine } from "../lib/spans"
-import { truncate as clip, graphemes, pushSpan, spanWidth, width, wrap } from "../lib/text"
+import { clamp, truncate as clip, graphemes, pushSpan, spanWidth, width, wrap } from "../lib/text"
 import { isMathLang, MATH_REF_EM, type MathRequest, mathRequest } from "../math/latex"
 import { isMarkdown } from "../notes/files"
 import { isImagePath, isRemoteImage, parseImageSize, QUERY_OR_ANCHOR } from "../notes/images"
@@ -156,12 +156,31 @@ export function stripTags(html: string): string {
   })
 }
 
-/** One `inline()` call's state: `cur` is the style in force, which an inline `<kbd>` or `<mark>` switches until it closes. */
+/**
+ * Inline maths: the render's picture layout (its cell, and the size lookup), its measure and the typesetting requests, so
+ * a `$…$` can become a placeholder of known width; `cell` absent means no picture layout (text mode), so it stays text.
+ */
+export interface InlineMath {
+  cell?: { w: number; h: number }
+  /** the layout's size for a `math:` key; null until it is typeset */
+  info?: PictureOpts["info"]
+  measure: number
+  requests: MathRequest[]
+}
+
+/** Where `inline()` reads the maths layout while rendering; absent for outline titles and Source. */
+export type InlineSink = LinkSink & { math?: InlineMath }
+
+/**
+ * One `inline()` call's state: `cur` is the style in force, which an inline `<kbd>` or `<mark>` switches until it closes;
+ * `math` is the sink's maths layout, carried down into nested tokens (emphasis, links).
+ */
 interface InlineRun {
   t: Theme
   base: Omit<Span, "text">
   cur: Omit<Span, "text">
-  sink?: LinkSink
+  sink?: InlineSink
+  math?: InlineMath
   out: Span[]
 }
 
@@ -173,10 +192,47 @@ const MARKS = new Map<string, (cur: Omit<Span, "text">, t: Theme) => Omit<Span, 
   ["highlight", (cur, t) => ({ ...cur, fg: t.warning, bg: t.backgroundElement })],
 ])
 
+/**
+ * Inline maths: a `$…$` on one line with no space just inside either mark, no `$` in the body, and not part of a `$$`
+ * pair (the fence path owns display maths); the formula's source, or null for a run with none left.
+ */
+const MATH_INLINE = /(?<![$\\])\$(?!\$)(?=[^\s$])([^$\n]*[^\s$\n])\$(?!\$)/
+
+/** The cells a formula's drawing takes: its own aspect at one cell row tall, at least 1 column and at most `room`. */
+const mathCols = (size: { w: number; h: number }, cell: { w: number; h: number }, room: number) =>
+  clamp(Math.round((size.w * (cell.h / size.h)) / cell.w), 1, Math.max(1, room))
+
+/**
+ * One text run with its inline formulas cut out: a placeholder `cols` wide carries the key, and asks for the typeset when
+ * no size is known yet. Without a picture layout, or before the size lands, the `$…$` stays as written.
+ */
+function inlineMath(text: string, run: InlineRun) {
+  const cell = run.math?.cell
+  const layout = cell ? run.math : null
+  const m = layout ? MATH_INLINE.exec(text) : null
+  if (!m || !layout || !cell) return void run.out.push({ ...run.cur, text })
+  const { measure, requests } = layout
+  if (m.index > 0) run.out.push({ ...run.cur, text: text.slice(0, m.index) })
+  const source = m[1]!
+  const req = mathRequest(source, run.t.text)
+  // through `info` like a fence's, so `pictureFiles` learns the cache file the decode reads (its `file` lookup)
+  const got = layout.info?.(req.key)
+  const size = got && !("problem" in got) ? got : null
+  if (size) {
+    const cols = mathCols(size, cell, measure - 2)
+    run.out.push({ ...run.cur, text: " ".repeat(cols), math: { src: req.key, cols } })
+  } else {
+    if (!requests.some((r) => r.key === req.key)) requests.push(req)
+    run.out.push({ ...run.cur, text: m[0] })
+  }
+  const rest = text.slice(m.index + m[0].length)
+  if (rest) inlineMath(rest, run)
+}
+
 function inlineText(tok: Token, run: InlineRun) {
   const tt = tokenOf(tok, "text") // an escape is a text token without `tokens`
   if (tt.tokens?.length) run.out.push(...inline(tt.tokens, run.t, run.cur, run.sink))
-  else run.out.push({ ...run.cur, text: decode(tt.text) })
+  else inlineMath(decode(tt.text), run)
 }
 
 function inlineCode(tok: Token, run: InlineRun) {
@@ -265,9 +321,9 @@ export function inline(
   tokens: Token[] | undefined,
   t: Theme,
   base: Omit<Span, "text"> = { fg: t.text },
-  sink?: LinkSink,
+  sink?: InlineSink,
 ): Span[] {
-  const run: InlineRun = { t, base, cur: base, sink, out: [] }
+  const run: InlineRun = { t, base, cur: base, sink, math: sink?.math, out: [] }
   if (!tokens) return run.out
   for (const tok of tokens) {
     const mark = MARKS.get(tok.type)
@@ -377,7 +433,7 @@ export function calloutOf(q: Tokens.Blockquote): Callout | null {
 /** `n` spaces, none when `n` is negative. */
 export const pad = (n: number) => " ".repeat(Math.max(0, n))
 
-/** What `blocks()` writes into: the rows, the outline, the code blocks still to highlight and the link targets. */
+/** What `blocks()` writes into: the rows, the outline, the code blocks still to highlight, the link targets and the maths. */
 interface Ctx {
   t: Theme
   lines: Line[]
@@ -665,9 +721,20 @@ function paragraphBlock(ctx: Ctx, tok: Token, f: BlockFrame) {
   const p = tokenOf(tok, "paragraph", "text")
   const img = soleImage(p.tokens ?? [])
   if (img && pictureBlock(ctx, img, f)) return tok.type === "paragraph" ? spacer(ctx, f.rest) : undefined
-  emitRows(ctx, wrap(inline(p.tokens, ctx.t, undefined, ctx.sink), f.max, f.pre(), f.rest))
+  emitRows(ctx, wrap(inline(p.tokens, ctx.t, undefined, inlineSink(ctx, f)), f.max, f.pre(), f.rest))
   if (tok.type === "paragraph") spacer(ctx, f.rest)
 }
+
+/** `ctx.sink` with the maths layout of a block laid out in `f`: inline formulas are placeholders as wide as their drawing. */
+const inlineSink = (ctx: Ctx, f: BlockFrame): InlineSink => ({
+  ...ctx.sink,
+  math: {
+    cell: ctx.picture?.mode === "pixels" ? ctx.picture.cell : undefined,
+    info: ctx.picture?.info,
+    measure: f.max,
+    requests: ctx.math,
+  },
+})
 
 /** A blockquote: a callout when it opens with `[!type]`, else its blocks under a primary bar, muted. */
 function quoteBlock(ctx: Ctx, tok: Token, f: BlockFrame) {
