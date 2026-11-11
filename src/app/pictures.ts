@@ -305,7 +305,15 @@ export class PictureCache {
       const format = sniffSize(bytes.subarray(0, SNIFF_BYTES))?.format
       if (!format) return null
       if (format === "svg") await ensureSvg()
-      return (this.decode ?? decodePicture(bg))(bytes, format, w, h)
+      const img = (this.decode ?? decodePicture(bg))(bytes, format, w, h)
+      // send it as PNG, not raw RGBA: a formula is a few kilobytes on the wire instead of megabytes, and a big
+      // transmission is what a terminal shows half-drawn (a sheet's image is 6.9 MB raw for 114×19 cells)
+      try {
+        img.ensureEncodedPng()
+      } catch {
+        // raw RGBA still draws
+      }
+      return img
     } catch {
       return null
     }
