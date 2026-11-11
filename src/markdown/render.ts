@@ -8,6 +8,7 @@ import { renderLatex } from "opentui-math"
 import { A, type Span, safe, safeLine } from "../lib/spans"
 import { truncate as clip, graphemes, pushSpan, spanWidth, width, wrap } from "../lib/text"
 import { isMathLang, MATH_REF_EM, type MathRequest, mathRequest } from "../math/latex"
+import { segment } from "../math/split"
 import { isMarkdown } from "../notes/files"
 import { isImagePath, isRemoteImage, parseImageSize, QUERY_OR_ANCHOR } from "../notes/images"
 import type { Theme } from "../theme/theme"
@@ -907,30 +908,25 @@ function codeBlock(ctx: Ctx, tok: Token, f: BlockFrame) {
 
 /**
  * A LaTeX fence: reserved rows for the typeset image once MathJax has drawn it, else a placeholder row that also asks
- * for it. Returns whether it handled the block; outside Preview (no picture layout) the source stays as a code fence.
+ * for it. A formula that would have to be drawn under `MATHS_EM_CELLS` is cut at its top-level breaks and stacked as
+ * one picture per piece. Returns whether it handled the block; outside Preview (no picture layout) the source stays as
+ * a code fence.
  */
 function mathBlock(ctx: Ctx, source: string, f: BlockFrame): boolean {
   const p = ctx.picture
   if (!p || !source.trim()) return false
   const { t } = ctx
   const req = mathRequest(source, t.text)
-  const id = ctx.pics.length
-  const pic: Pic = { id, line: ctx.lines.length, rows: 0, cols: 0, left: 0, src: req.key, alt: "maths" }
-  ctx.pics.push(pic)
   // through `info` like any other picture, so `pictureFiles` learns the cache file the decode reads (its `file` lookup)
   const got = p.info(req.key)
   const size = got && !("problem" in got) ? got : null
-  if (!size) {
-    if (!ctx.math.some((r) => r.key === req.key)) ctx.math.push(req)
-    ctx.lines.push({
-      spans: [...f.rest, { text: "▣ ", fg: t.primary }, { text: "typesetting…", fg: t.textMuted }],
-      pic: id,
-    })
-    spacer(ctx, f.rest)
-    return true
-  }
+  const indent = spanWidth(f.rest)
+  const room = f.max - indent
+  if (!size) return mathPlaceholder(ctx, req, f)
   if (p.mode === "text") {
-    pic.size = size
+    const id = ctx.pics.length
+    const pic: Pic = { id, line: ctx.lines.length, rows: 0, cols: 0, left: 0, src: req.key, alt: "maths", size }
+    ctx.pics.push(pic)
     ctx.lines.push({
       spans: [
         ...f.rest,
@@ -942,14 +938,75 @@ function mathBlock(ctx: Ctx, source: string, f: BlockFrame): boolean {
     spacer(ctx, f.rest)
     return true
   }
-  const indent = spanWidth(f.rest)
-  const room = f.max - indent
-  // the sheet fits pic.size into its body, so a typeset block must carry it or the viewer bails on it
-  pic.size = size
-  const box = mathBox(size, room, p.cell, p.mathZoom)
-  Object.assign(pic, box, { left: indent + Math.floor((room - box.cols) / 2) })
+  const fitsPx = (room * p.cell.w * MATH_REF_EM) / (MATHS_EM_CELLS * p.cell.h)
+  const seg = segment(source, fitsPx, (latex) => {
+    const piece = p.info(mathRequest(latex, t.text).key)
+    return piece && !("problem" in piece) ? piece.w : null
+  })
+  if (seg.missing.length) {
+    for (const piece of seg.missing) {
+      const preq = mathRequest(piece, t.text)
+      if (!ctx.math.some((r) => r.key === preq.key)) ctx.math.push(preq)
+    }
+    return mathPlaceholder(ctx, null, f)
+  }
+  // whole, it keeps the box it always had: centred in the measure, and never taller than MATHS_MAX_ROWS
+  if (seg.pieces.length === 1) {
+    const id = ctx.pics.length
+    const pic: Pic = { id, line: ctx.lines.length, rows: 0, cols: 0, left: 0, src: req.key, alt: "maths", size }
+    ctx.pics.push(pic)
+    const box = mathBox(size, room, p.cell, p.mathZoom)
+    Object.assign(pic, box, { left: indent + Math.floor((room - box.cols) / 2) })
+    for (let i = 0; i < box.rows; i++)
+      ctx.lines.push({ spans: i === 0 ? f.pre() : f.rest.map((s) => ({ ...s })), pic: id })
+    spacer(ctx, f.rest)
+    return true
+  }
+  // cut: one left-aligned picture per piece, stacked, a piece that fits at the floor free of the row cap
+  const cap = seg.breakable ? Number.POSITIVE_INFINITY : MATHS_MAX_ROWS
+  for (const piece of seg.pieces) {
+    const preq = mathRequest(piece, t.text)
+    const psize = p.info(preq.key)
+    if (psize && !("problem" in psize)) mathPiece(ctx, { ...f, pre: () => f.pre() }, preq, psize, indent, room, cap)
+    else mathPlaceholder(ctx, preq, { ...f, pre: () => f.pre() })
+  }
+  spacer(ctx, f.rest)
+  return true
+}
+
+/**
+ * One piece of a cut formula: what `mathBlock` draws for it. `cap` is the tallest it may be drawn, `Infinity` for a
+ * breakable formula whose pieces all fit at the floor. Left-aligned so a continuation line lies under the first.
+ */
+function mathPiece(
+  ctx: Ctx,
+  f: BlockFrame,
+  req: MathRequest,
+  size: { w: number; h: number },
+  indent: number,
+  room: number,
+  cap: number,
+) {
+  const p = ctx.picture!
+  const id = ctx.pics.length
+  const pic: Pic = { id, line: ctx.lines.length, rows: 0, cols: 0, left: 0, src: req.key, alt: "maths", size }
+  ctx.pics.push(pic)
+  const box = mathBox(size, room, p.cell, p.mathZoom, cap)
+  Object.assign(pic, box, { left: indent })
   for (let i = 0; i < box.rows; i++)
     ctx.lines.push({ spans: i === 0 ? f.pre() : f.rest.map((s) => ({ ...s })), pic: id })
+}
+
+/** The `typesetting…` row a formula holds until it is drawn: it asks for `req` when there is one piece to ask for. */
+function mathPlaceholder(ctx: Ctx, req: MathRequest | null, f: BlockFrame): true {
+  const id = ctx.pics.length
+  const src = req?.key ?? ""
+  ctx.pics.push({ id, line: ctx.lines.length, rows: 0, cols: 0, left: 0, src, alt: "maths" })
+  if (req && !ctx.math.some((r) => r.key === req.key)) ctx.math.push(req)
+  ctx.lines.push({
+    spans: [...f.rest, { text: "▣ ", fg: ctx.t.primary }, { text: "typesetting…", fg: ctx.t.textMuted }],
+    pic: id,
+  })
   spacer(ctx, f.rest)
   return true
 }
