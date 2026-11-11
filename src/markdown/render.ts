@@ -6,6 +6,7 @@
 import type { Token, Tokens } from "marked"
 import { A, type Span, safe, safeLine } from "../lib/spans"
 import { truncate as clip, graphemes, pushSpan, spanWidth, width, wrap } from "../lib/text"
+import { renderLatex } from "opentui-math"
 import { isMathLang, MATH_REF_EM, type MathRequest, mathRequest } from "../math/latex"
 import { isMarkdown } from "../notes/files"
 import { isImagePath, isRemoteImage, parseImageSize, QUERY_OR_ANCHOR } from "../notes/images"
@@ -173,10 +174,96 @@ const MARKS = new Map<string, (cur: Omit<Span, "text">, t: Theme) => Omit<Span, 
   ["highlight", (cur, t) => ({ ...cur, fg: t.warning, bg: t.backgroundElement })],
 ])
 
+/**
+ * An inline formula `$…$`, on one line. It goes through opentui-math's Unicode cell renderer, which lays it out in
+ * text cells: no image to size, nothing to wait for, and it reads the same in every terminal. A formula taller than one
+ * row (a fraction, a dot over a letter) has nowhere to sit in a row of text, so its source stays as written.
+ */
+const INLINE_MATH = /(?<![$\\])\$(?!\$)(?=[^\s$])([^$\n]*[^\s$\n])\$(?!\$)/g
+
+function inlineFormula(source: string, style: Omit<Span, "text">): Span[] | null {
+  try {
+    const laid = renderLatex(source, { displayMode: false, compactScripts: true })
+    if (laid.height !== 1) return null
+    const spans: Span[] = []
+    for (const cell of laid.cells[0] ?? []) pushSpan(spans, { ...style, text: cell?.char ?? " " })
+    return spans
+  } catch {
+    // what MathJax would refuse too: the source reads as written
+    return null
+  }
+}
+
 function inlineText(tok: Token, run: InlineRun) {
   const tt = tokenOf(tok, "text") // an escape is a text token without `tokens`
   if (tt.tokens?.length) run.out.push(...inline(tt.tokens, run.t, run.cur, run.sink))
+  // a LaTeX spacing command keeps its backslash: in `$,;$` a comma is a comma, and marked would read `\,` as an
+  // escaped comma. Prose rarely writes `\,` outside a formula, where it now reads as written.
+  else if (tok.type === "escape" && /^\\[,;:!]$/.test((tok as Tokens.Escape).raw))
+    run.out.push({ ...run.cur, text: (tok as Tokens.Escape).raw })
   else run.out.push({ ...run.cur, text: decode(tt.text) })
+}
+
+/** The spans of `[a, b)` of a run, cut where the span boundaries fall. */
+function sliceRun(run: Span[], a: number, b: number): Span[] {
+  const out: Span[] = []
+  let at = 0
+  for (const span of run) {
+    const end = at + span.text.length
+    const lo = Math.max(a, at)
+    const hi = Math.min(b, end)
+    if (hi > lo) out.push({ ...span, text: span.text.slice(lo - at, hi - at) })
+    at = end
+  }
+  return out
+}
+
+/** The style of the span holding `pos` in a run: what a formula drawn there looks like. */
+function styleAt(run: Span[], pos: number): Omit<Span, "text"> {
+  let at = 0
+  for (const span of run) {
+    at += span.text.length
+    if (pos < at) return { ...span, text: "" } as Omit<Span, "text">
+  }
+  return { ...run[run.length - 1]!, text: "" } as Omit<Span, "text">
+}
+
+/** One run of plain text, each `$…$` in it drawn as cells. */
+function mathInRun(run: Span[]): Span[] {
+  const joined = run.map((s) => s.text).join("")
+  const out: Span[] = []
+  let at = 0
+  for (const m of joined.matchAll(INLINE_MATH)) {
+    const drawn = inlineFormula(m[1]!, styleAt(run, m.index))
+    if (!drawn) continue
+    out.push(...sliceRun(run, at, m.index))
+    out.push(...drawn)
+    at = m.index + m[0].length
+  }
+  if (!at) return run
+  out.push(...sliceRun(run, at, joined.length))
+  return out.filter((s) => s.text !== "")
+}
+
+/**
+ * The spans of a row of text, with every `$…$` drawn (see `inlineFormula`). A span with a background is left whole — a
+ * code span or a highlight reads as written — and the plain runs between them are scanned as one text, so a formula is
+ * still found when marked has split it: `\,` in LaTeX is a backslash escape, which ends a text token.
+ */
+export function inlineMathSpans(spans: Span[]): Span[] {
+  if (!spans.some((s) => s.text.includes("$"))) return spans
+  const out: Span[] = []
+  let i = 0
+  while (i < spans.length) {
+    let j = i
+    while (j < spans.length && spans[j]!.bg === undefined) j++
+    if (j === i) out.push(spans[i++]!)
+    else {
+      out.push(...mathInRun(spans.slice(i, j)))
+      i = j
+    }
+  }
+  return out
 }
 
 function inlineCode(tok: Token, run: InlineRun) {
@@ -274,7 +361,7 @@ export function inline(
     if (mark) run.out.push(...inline((tok as Tokens.Generic).tokens, t, mark(run.cur, t), sink))
     else (INLINE_KINDS.get(tok.type) ?? inlineOther)(tok, run)
   }
-  return run.out
+  return inlineMathSpans(run.out)
 }
 
 const NAMED_ENTITIES: Record<string, string> = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: "\u00a0" }
