@@ -2,7 +2,6 @@ import { describe, expect, test } from "bun:test"
 import { rmSync } from "node:fs"
 import type { NativeImage } from "@opentui/core"
 import { PictureCache, picKey, pictureFiles } from "../../src/app/pictures"
-import { spanWidth } from "../../src/lib/text"
 import { mathBox, render } from "../../src/markdown/render"
 import { ensureMath, mathInfo, mathRequest } from "../../src/math/latex"
 import { scanTree } from "../../src/notes/files"
@@ -14,12 +13,6 @@ const cell = { w: 10, h: 20 }
 const info = (s: string) => (s.startsWith("math:") ? mathInfo(s) : null)
 const pix = { picture: { mode: "pixels" as const, cell, info } }
 const txt = { picture: { mode: "text" as const, cell, info } }
-/** No size known yet: the picture layout answers null, so every formula is still a request. */
-const unsized = { picture: { mode: "pixels" as const, cell, info: (_src: string) => null } }
-/** The same sizes as `pix`, for a formula `ensureMath` has not typeset: the stub answers without touching the cache. */
-const stub = {
-  picture: { mode: "pixels" as const, cell, info: (s: string) => (s.startsWith("math:") ? { w: 40, h: 40 } : null) },
-}
 const fence = (lang: string, code: string) => `${lang} fence\n\n\`\`\`${lang}\n${code}\n\`\`\`\n`
 
 /** Poll for a condition (a decode lands a macrotask or more later), bounded. */
@@ -142,57 +135,5 @@ describe("latex fences", () => {
     const other = render(fence("latex", source), 80, tinted, pix)
     expect(other.math?.[0]?.key).toBe(mathRequest(source, "#123456").key)
     expect(mathRequest(source, "#123456").key).not.toBe(dark.key)
-  })
-})
-
-describe("inline maths", () => {
-  test("a known size makes the formula a placeholder as wide as its drawing", () => {
-    // 40×40 is one cell row tall at 40·20/40 = 20 px = 2 columns
-    const r = render("a $x^2$ b\n", 80, t, stub)
-    const spans = r.lines[0]!.spans
-    expect(spans.map((s) => s.text)).toEqual(["a ", "  ", " b"])
-    expect(spans[1]!.math).toEqual({ src: mathRequest("x^2", t.text).key, cols: 2 })
-    expect(spans[0]!.math).toBeUndefined()
-    expect(spanWidth(spans)).toBe(6)
-    expect(r.math ?? []).toEqual([])
-  })
-
-  test("no size yet leaves the text as written and asks once per distinct formula", () => {
-    const r = render("a $x^2$ b, $x^2$ again, $y$\n", 80, t, unsized)
-    expect(r.lines[0]!.spans.map((s) => s.text)).toEqual(["a $x^2$ b, $x^2$ again, $y$"])
-    expect(r.lines[0]!.spans[0]!.math).toBeUndefined()
-    expect((r.math ?? []).map((q) => q.key)).toEqual([mathRequest("x^2", t.text).key, mathRequest("y", t.text).key])
-    expect(r.math?.[0]?.source).toBe("x^2")
-  })
-
-  test("text mode has no place to draw a formula, so it is not one", () => {
-    const r = render("a $x^2$ b\n", 80, t, txt)
-    expect(r.lines[0]!.spans.map((s) => s.text)).toEqual(["a $x^2$ b"])
-    expect(r.math ?? []).toEqual([])
-  })
-
-  test("currency, escaped dollars, display pairs and spaced dollars stay plain text", () => {
-    const src = "$5 and $10, \\$y\\$, $$z$$, $ w $\n"
-    const r = render(src, 80, t, unsized)
-    expect(r.lines[0]!.spans.map((s) => s.text)).toEqual(["$5 and $10, $y$, $$z$$, $ w $"])
-    expect(r.lines[0]!.spans.every((s) => s.math === undefined)).toBe(true)
-    expect(r.math ?? []).toEqual([])
-  })
-
-  test("code spans are untouched, and a formula in a link is the link's text", () => {
-    const r = render("a `$x$` and [b $y$](http://example.com) c\n", 80, t, unsized)
-    expect(r.lines[0]!.spans.map((s) => s.text)).toEqual(["a ", "$x$", " and ", "b $y$", " c"])
-    expect(r.lines[0]!.spans.every((s) => s.math === undefined)).toBe(true)
-    expect(r.lines[0]!.spans[3]!.link).toBe(0)
-    expect(r.links).toEqual([{ kind: "url", href: "http://example.com" }])
-    expect((r.math ?? []).map((q) => q.source)).toEqual(["y"])
-  })
-
-  test("a placeholder wraps as one block and never splits its columns", () => {
-    const r = render(`${"word ".repeat(20)}$x^2$ tail\n`, 40, t, stub)
-    for (const l of r.lines) expect(spanWidth(l.spans)).toBeLessThanOrEqual(40)
-    const marked = r.lines.flatMap((l) => l.spans.filter((s) => s.math))
-    expect(marked.length).toBe(1)
-    expect(marked[0]!.text).toBe(" ".repeat(marked[0]!.math!.cols))
   })
 })

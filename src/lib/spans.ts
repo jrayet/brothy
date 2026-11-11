@@ -17,8 +17,6 @@ export interface Span {
   attr?: number
   /** index into `Rendered.links` when this text belongs to a link */
   link?: number
-  /** inline maths drawn over this span's `cols` cells: the `math:<hash>` key and the width of the drawing */
-  math?: { src: string; cols: number }
 }
 
 /**
