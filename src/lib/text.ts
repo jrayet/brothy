@@ -21,7 +21,12 @@ export const spanWidth = (spans: Span[]) => spans.reduce((n, s) => n + width(s.t
 
 /** Do `a` and `b` look the same (colours, attributes, link, maths drawing)? A missing `attr` is 0; a link never merges with another. */
 export const sameStyle = (a: Span, b: Span) =>
-  a.fg === b.fg && a.bg === b.bg && (a.attr ?? 0) === (b.attr ?? 0) && a.link === b.link && a.math?.src === b.math?.src
+  a.fg === b.fg &&
+  a.bg === b.bg &&
+  (a.attr ?? 0) === (b.attr ?? 0) &&
+  a.link === b.link &&
+  a.math?.src === b.math?.src &&
+  a.math?.cols === b.math?.cols
 
 /** Append a copy of `s` to `spans`, or its text to the last span when they look the same; empty text is dropped. */
 export function pushSpan(spans: Span[], s: Span) {
@@ -132,23 +137,7 @@ function rowWriter(max: number, first: Span[], rest: Span[]) {
       w += gw
     }
   }
-  /** Place one stretch of text whole (a maths placeholder's columns), on a new row when it does not fit. */
-  const atom = (s: Span, text: string) => {
-    const pw = width(text)
-    if (w > base && w + (pendingSpace ? 1 : 0) + pw > max) newRow()
-    else if (pendingSpace) {
-      pushSpan(row, pendingSpace)
-      w += 1
-    }
-    pendingSpace = null
-    if (pw > max - base) place(s, text)
-    else {
-      pushSpan(row, { ...s, text })
-      w += pw
-    }
-  }
   return {
-    atom,
     newRow,
     place,
     /** a run of blanks in `s`: one space, drawn only if a word follows on the same row and not at the row's start */
@@ -192,13 +181,15 @@ function wrapVerbatim(spans: Span[], out: RowWriter) {
 /** `wrap`'s word mode: the text cut into words, blank runs and "\n"; a maths placeholder stays whole (its blanks are its columns). */
 function wrapWords(spans: Span[], out: RowWriter) {
   for (const s of spans) {
-    for (const part of s.text.split(/(\n|[ \t]+)/)) {
-      if (!part) continue
-      if (part === "\n") out.newRow()
-      else if (s.math) out.atom(s, s.text)
-      else if (/^[ \t]+$/.test(part)) out.gap(s)
-      else out.word(s, part)
-    }
+    // a formula is placed whole: its blanks are its columns, not a gap before a word
+    if (s.math) out.word(s, s.text)
+    else
+      for (const part of s.text.split(/(\n|[ \t]+)/)) {
+        if (!part) continue
+        if (part === "\n") out.newRow()
+        else if (/^[ \t]+$/.test(part)) out.gap(s)
+        else out.word(s, part)
+      }
   }
 }
 

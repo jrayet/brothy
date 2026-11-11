@@ -40,6 +40,7 @@ import type { AppCtx } from "./ctx"
 import type { Derived } from "./derive"
 import { keyDef, WELCOME_KEYS } from "./keymap"
 import { labelGeo } from "./links"
+import { mathLayer } from "./MathLayer"
 import { pictureLayer, reservedBlank } from "./PictureLayer"
 import { type PillActions, pictureAlts, pictureCut, pillLayer } from "./PillLayer"
 import type { PictureSheet } from "./picture-sheet"
@@ -189,6 +190,7 @@ function zenLines(c: AppCtx, d: Derived) {
           </box>
         ) : null}
         {pictureLayer(c, d, last ? sheetAt : CH, { first, lo: d.win.lo, hi: Math.min(d.win.hi, stop), dx: 2 })}
+        {mathLayer(c, d, last ? sheetAt : CH, { first, lo: d.win.lo, hi: Math.min(d.win.hi, stop), dx: 2 })}
       </box>
     )
   }
@@ -423,6 +425,7 @@ function noteLines(c: AppCtx, d: Derived, pill: PillActions) {
         ),
       )}
       {d.pill?.card ? pictureAlts(d, picCut) : pictureLayer(c, d, picCut)}
+      {d.pill?.card ? null : mathLayer(c, d, picCut)}
       {pictureLabels(d, picCut)}
       {margin ? (
         <box
